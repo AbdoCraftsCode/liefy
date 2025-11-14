@@ -1,0 +1,86 @@
+import mongoose from "mongoose";
+
+const PointSchema = new mongoose.Schema({
+    type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point"
+    },
+    coordinates: {
+        type: [Number], // [longitude, latitude]
+        required: true
+    }
+}, { _id: false });
+
+const OrderSchema = new mongoose.Schema({
+    customerName: {
+        type: String,
+        required: true
+    },
+    phone: {
+        type: String,
+        // required: true
+    },
+    source: {
+        location: {
+            type: PointSchema,
+            required: true
+        },
+        address: {
+            type: String,
+            required: true
+        }
+    },
+    destination: {
+        location: {
+            type: PointSchema,
+            required: true
+        },
+        address: {
+            type: String,
+            required: true
+        }
+    },
+    orderPrice: {
+        type: Number,
+        // required: true
+    },
+    deliveryPrice: {
+        type: Number,
+        required: true
+    },
+    // bonus: {
+    //     type: Number,
+    //     default: 0
+    // },
+    totalPrice: {
+        type: Number,
+        // required: true
+    },
+    orderDetails: { type: String, default: "" },
+    image: {
+        secure_url: { type: String, default: null },
+        public_id: { type: String, default: null }
+    },
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ["pending", "active", "completed", "cancelled"],
+        default: "pending"
+    },
+    orderNumber: {
+        type: String,
+        unique: true,
+        default: () => `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    }
+});
+
+export const dliveryModel = mongoose.model("dlivery", OrderSchema);

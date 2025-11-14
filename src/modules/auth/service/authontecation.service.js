@@ -12,9 +12,12 @@ import { nanoid, customAlphabet } from "nanoid";
 import { vervicaionemailtemplet } from "../../../utlis/temblete/vervication.email.js";
 import { sendemail } from "../../../utlis/email/sendemail.js";
 import { RestaurantModel } from "../../../DB/models/RestaurantSchema.model.js";
+import cloud from "../../../utlis/multer/cloudinary.js";
 // import { sendOTP } from "./regestration.service.js";
 import AppSettingsSchema from "../../../DB/models/AppSettingsSchema.js";
 import { sendOTP } from "./regestration.service.js";
+import { dliveryModel } from "../../../DB/models/dliveryorder.js";
+import { KiloPriceModel } from "../../../DB/models/kiloPriceSchema.js";
 const AUTHENTICA_OTP_URL = "https://api.authentica.sa/api/v1/send-otp";
 // export const login = asyncHandelr(async (req, res, next) => {
 //     const { identifier, password } = req.body; // identifier يمكن أن يكون إيميل أو رقم هاتف
@@ -245,43 +248,20 @@ const AUTHENTICA_OTP_URL = "https://api.authentica.sa/api/v1/send-otp";
 
 
 export const login = asyncHandelr(async (req, res, next) => {
-    const { identifier, password } = req.body; // identifier ممكن يكون إيميل أو رقم هاتف
-    const { fedk, fedkdrivers } = req.query; // ✅ الحقلين الجدد من query
+    const { identifier, password } = req.body; // ✅ identifier = رقم الهاتف فقط
     console.log(identifier, password);
 
-    // ✅ إعداد الفلتر الأساسي
-    let baseFilter = {
-        $or: [{ email: identifier }, { phone: identifier }]
-    };
-
-    // ✅ لو الحقل fedk موجود → نبحث عن User أو ServiceProvider (Host, Doctor)
-    if (fedk) {
-        baseFilter.$or = [
-            { email: identifier, accountType: "User" },
-            { phone: identifier, accountType: "User" },
-            { email: identifier, accountType: "ServiceProvider", serviceType: { $in: ["Host", "Doctor"] } },
-            { phone: identifier, accountType: "ServiceProvider", serviceType: { $in: ["Host", "Doctor"] } }
-        ];
-    }
-
-    // ✅ لو الحقل fedkdrivers موجود → نبحث عن ServiceProvider (Driver, Delivery)
-    if (fedkdrivers) {
-        baseFilter.$or = [
-            { email: identifier, accountType: "ServiceProvider", serviceType: { $in: ["Driver", "Delivery"] } },
-            { phone: identifier, accountType: "ServiceProvider", serviceType: { $in: ["Driver", "Delivery"] } }
-        ];
-    }
-
-    const checkUser = await Usermodel.findOne(baseFilter);
+    // ✅ البحث عن المستخدم برقم الهاتف فقط
+    const checkUser = await Usermodel.findOne({ phone: identifier });
 
     if (!checkUser) {
-        return next(new Error("User not found", { cause: 404 }));
+        return next(new Error("المستخدم غير موجود", { cause: 404 }));
     }
 
     // ✅ لو المستخدم staff أو manager → تسجيل مباشر بدون تحقق OTP أو شروط إضافية
     if (checkUser.accountType === "staff" || checkUser.accountType === "manager") {
         if (!comparehash({ planText: password, valuehash: checkUser.password })) {
-            return next(new Error("Password is incorrect", { cause: 404 }));
+            return next(new Error("كلمة المرور غير صحيحة", { cause: 404 }));
         }
 
         const access_Token = generatetoken({
@@ -293,46 +273,18 @@ export const login = asyncHandelr(async (req, res, next) => {
             expiresIn: "365d"
         });
 
-        return successresponse(res, "✅ Staff or Manager logged in successfully", 200, {
+        return successresponse(res, "✅ تم تسجيل الدخول بنجاح", 200, {
             access_Token,
             refreshToken,
             checkUser
         });
     }
 
-    if (checkUser?.provider === providerTypes.google) {
-        return next(new Error("Invalid account", { cause: 404 }));
-    }
-
     // ✅ تحقق من حالة التأكيد
     if (!checkUser.isConfirmed) {
         try {
-            if (checkUser.phone) {
-                // ✅ إرسال OTP للهاتف
-                await sendOTP(checkUser.phone);
-                console.log(`📩 OTP تم إرساله إلى الهاتف: ${checkUser.phone}`);
-            } else if (checkUser.email) {
-                // ✅ إنشاء OTP جديد للبريد
-                const otp = customAlphabet("0123456789", 4)();
-                const html = vervicaionemailtemplet({ code: otp });
-
-                const emailOTP = await generatehash({ planText: `${otp}` });
-                const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-                await Usermodel.updateOne(
-                    { _id: checkUser._id },
-                    { emailOTP, otpExpiresAt, attemptCount: 0 }
-                );
-
-                await sendemail({
-                    to: checkUser.email,
-                    subject: "Confirm Email",
-                    text: "رمز التحقق الخاص بك",
-                    html,
-                });
-
-                console.log(`📩 OTP تم إرساله إلى البريد: ${checkUser.email}`);
-            }
+            await sendOTP(checkUser.phone);
+            console.log(`📩 OTP تم إرساله إلى الهاتف: ${checkUser.phone}`);
 
             return successresponse(
                 res,
@@ -348,7 +300,7 @@ export const login = asyncHandelr(async (req, res, next) => {
 
     // ✅ التحقق من كلمة المرور
     if (!comparehash({ planText: password, valuehash: checkUser.password })) {
-        return next(new Error("Password is incorrect", { cause: 404 }));
+        return next(new Error("كلمة المرور غير صحيحة", { cause: 404 }));
     }
 
     // ✅ إنشاء التوكنات
@@ -361,11 +313,355 @@ export const login = asyncHandelr(async (req, res, next) => {
         expiresIn: "365d"
     });
 
-    return successresponse(res, "Done", 200, { access_Token, refreshToken, checkUser });
+    return successresponse(res, "✅ تم تسجيل الدخول بنجاح", 200, {
+        access_Token,
+        refreshToken,
+        checkUser
+    });
 });
 
 
 
+export const createOrderClient = asyncHandelr(async (req, res, next) => {
+    const userId = req.user.id;
+    const {
+        customerName,
+        phone,
+        sourceAddress,
+        sourceLongitude,
+        sourceLatitude,
+        destinationAddress,
+        destinationLongitude,
+        destinationLatitude,
+        orderPrice,
+        deliveryPrice,
+        // bonus = 0,
+        totalPrice,
+        orderDetails = ""
+    } = req.body;
+
+    // ✅ التحقق من الحقول المطلوبة
+    if (
+        !customerName || !phone ||
+        !sourceAddress || sourceLongitude === undefined || sourceLatitude === undefined ||
+        !destinationAddress || destinationLongitude === undefined || destinationLatitude === undefined ||
+        orderPrice === undefined || deliveryPrice === undefined || totalPrice === undefined
+    ) {
+        return next(new Error("❌ جميع الحقول المطلوبة يجب إدخالها في body", { cause: 400 }));
+    }
+
+    // ✅ التحقق من وجود المستخدم
+    const user = await Usermodel.findById(userId);
+    if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+    // ✅ رفع صورة الطلب (إن وُجدت)
+    let uploadedImage = null;
+    if (req.files?.image?.[0]) {
+        const file = req.files.image[0];
+        const uploaded = await cloud.uploader.upload(file.path, { folder: "orders/images" });
+        uploadedImage = {
+            secure_url: uploaded.secure_url,
+            public_id: uploaded.public_id
+        };
+    }
+
+    // ✅ إنشاء الطلب
+    const newOrder = await dliveryModel.create({
+        customerName,
+        phone,
+        source: {
+            address: sourceAddress,
+            location: {
+                type: "Point",
+                coordinates: [parseFloat(sourceLongitude), parseFloat(sourceLatitude)]
+            }
+        },
+        destination: {
+            address: destinationAddress,
+            location: {
+                type: "Point",
+                coordinates: [parseFloat(destinationLongitude), parseFloat(destinationLatitude)]
+            }
+        },
+        orderPrice: parseFloat(orderPrice),
+        deliveryPrice: parseFloat(deliveryPrice),
+        // bonus: parseFloat(bonus),
+        totalPrice: parseFloat(totalPrice),
+        orderDetails: orderDetails.toString(),
+        image: uploadedImage,
+        createdBy: userId
+    });
+
+    return res.status(201).json({
+        success: true,
+        message: "✅ تم إنشاء الطلب بنجاح",
+        data: newOrder
+    });
+});
+
+export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
+    const userId = req.user.id; // ✅ جلب userId من التوكن
+
+    // ✅ التحقق من وجود المستخدم
+    const user = await Usermodel.findById(userId);
+    if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+    // ✅ جلب الطلبات اللي حالتها "pending"
+    const myPendingOrders = await dliveryModel.find({
+        createdBy: userId,
+        status: "pending"
+    }).sort({ createdAt: -1 });
+
+    if (!myPendingOrders.length) {
+        return res.status(200).json({
+            success: true,
+            message: "ℹ️ لا توجد طلبات في الانتظار",
+            data: []
+        });
+    }
+
+    // ✅ إرجاع الطلبات
+    return res.status(200).json({
+        success: true,
+        message: "✅ تم جلب الطلبات في الانتظار بنجاح",
+        count: myPendingOrders.length,
+        data: myPendingOrders
+    });
+});
+
+
+export const getMycompletedOrders = asyncHandelr(async (req, res, next) => {
+    const userId = req.user.id; // ✅ جلب userId من التوكن
+
+    // ✅ التحقق من وجود المستخدم
+    const user = await Usermodel.findById(userId);
+    if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+    // ✅ جلب الطلبات اللي حالتها "pending"
+    const myPendingOrders = await dliveryModel.find({
+        createdBy: userId,
+        status: "completed"
+    }).sort({ createdAt: -1 });
+
+    if (!myPendingOrders.length) {
+        return res.status(200).json({
+            success: true,
+            message: "ℹ️ لا توجد طلبات في الانتظار",
+            data: []
+        });
+    }
+
+    // ✅ إرجاع الطلبات
+    return res.status(200).json({
+        success: true,
+        message: "✅ تم جلب الطلبات في الانتظار بنجاح",
+        count: myPendingOrders.length,
+        data: myPendingOrders
+    });
+});
+
+
+
+export const getMyactiveOrders = asyncHandelr(async (req, res, next) => {
+    const userId = req.user.id; // ✅ جلب userId من التوكن
+
+    // ✅ التحقق من وجود المستخدم
+    const user = await Usermodel.findById(userId);
+    if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+    // ✅ جلب الطلبات اللي حالتها "pending"
+    const myPendingOrders = await dliveryModel.find({
+        createdBy: userId,
+        status: "active"
+    }).sort({ createdAt: -1 });
+
+    if (!myPendingOrders.length) {
+        return res.status(200).json({
+            success: true,
+            message: "ℹ️ لا توجد طلبات في الانتظار",
+            data: []
+        });
+    }
+
+    // ✅ إرجاع الطلبات
+    return res.status(200).json({
+        success: true,
+        message: "✅ تم جلب الطلبات في الانتظار بنجاح",
+        count: myPendingOrders.length,
+        data: myPendingOrders
+    });
+});
+
+
+
+export const createKiloPrice = asyncHandelr(async (req, res, next) => {
+    let { kiloPrice, distance } = req.body;
+
+    // لازم يكون واحد على الأقل موجود (مستقبلاً ممكن تبعت الاتنين مع بعض)
+    if (kiloPrice === undefined && distance === undefined) {
+        return next(new Error("❌ يجب إدخال (kiloPrice) أو (distance)", { cause: 400 }));
+    }
+
+    // تحويل للقيم الرقمية لو مرسلة كسلاسل
+    if (kiloPrice !== undefined) kiloPrice = parseFloat(kiloPrice);
+    if (distance !== undefined) distance = parseFloat(distance);
+
+    // جلب السجل الحالي (لو موجود)
+    const existingEntry = await KiloPriceModel.findOne();
+
+    // لو مفيش سجل نهائيًا -> أنشئ واحد جديد بالحقول المرسلة
+    if (!existingEntry) {
+        const newEntry = await KiloPriceModel.create({
+            kiloPrice: kiloPrice === undefined ? undefined : kiloPrice,
+            distance: distance === undefined ? undefined : distance
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "✅ تم إنشاء الإعداد بنجاح",
+            data: newEntry
+        });
+    }
+
+    // لو في سجل موجود مسبقًا:
+    // - لو المستخدم مرسل حقل موجود بالفعل -> يمنع
+    // - لو المستخدم مرسل حقل غير موجود في السجل -> يحدث السجل بإضافة الحقل
+    const updates = {};
+
+    if (kiloPrice !== undefined) {
+        // لو السجل يحتوي على kiloPrice مسبقًا -> ممنوع تكرار
+        if (existingEntry.kiloPrice !== undefined && existingEntry.kiloPrice !== null) {
+            return next(new Error("⚠️ سعر الكيلو موجود بالفعل، لا يمكن إضافته مرة أخرى", { cause: 400 }));
+        }
+        updates.kiloPrice = kiloPrice;
+    }
+
+    if (distance !== undefined) {
+        // لو السجل يحتوي على distance مسبقًا -> ممنوع تكرار
+        if (existingEntry.distance !== undefined && existingEntry.distance !== null) {
+            return next(new Error("⚠️ المسافة (distance) موجودة بالفعل، لا يمكن إضافتها مرة أخرى", { cause: 400 }));
+        }
+        updates.distance = distance;
+    }
+
+    // لو مفيش تحديثات (يعني المستخدم حاول يرسل حقول لكن كلها موجودة) -> خطأ
+    if (Object.keys(updates).length === 0) {
+        return next(new Error("⚠️ لا توجد تغييرات جديدة لتطبيقها", { cause: 400 }));
+    }
+
+    // تطبيق التحديث وإرجاع السجل المحدّث
+    const updated = await KiloPriceModel.findByIdAndUpdate(existingEntry._id, { $set: updates }, { new: true });
+
+    return res.status(200).json({
+        success: true,
+        message: "✅ تم تحديث الإعداد بنجاح",
+        data: updated
+    });
+});
+
+
+
+
+
+export const getKiloPrice = asyncHandelr(async (req, res) => {
+    const kilo = await KiloPriceModel.findOne().sort({ createdAt: -1 });
+    if (!kilo) return res.status(404).json({ message: "⚠️ لا يوجد سعر كيلو بعد" });
+
+    res.json({
+        success: true,
+        data: kilo
+    });
+});
+
+// ✅ تعديل سعر الكيلو
+export const updateKiloPrice = asyncHandelr(async (req, res, next) => {
+    const { id } = req.params;
+    let { kiloPrice, distance } = req.body;
+
+    // ❗ لازم المستخدم يرسل حاجة واحدة على الأقل
+    if (kiloPrice === undefined && distance === undefined) {
+        return next(new Error("❌ يجب إدخال (kiloPrice) أو (distance) للتعديل", { cause: 400 }));
+    }
+
+    // تحويل لقيم رقمية لو مرسلة كسلاسل
+    if (kiloPrice !== undefined) kiloPrice = parseFloat(kiloPrice);
+    if (distance !== undefined) distance = parseFloat(distance);
+
+    const updates = {};
+    if (kiloPrice !== undefined) updates.kiloPrice = kiloPrice;
+    if (distance !== undefined) updates.distance = distance;
+
+    const updated = await KiloPriceModel.findByIdAndUpdate(
+        id,
+        { $set: updates },
+        { new: true }
+    );
+
+    if (!updated) {
+        return next(new Error("❌ لم يتم العثور على الإعداد المطلوب", { cause: 404 }));
+    }
+
+    res.json({
+        success: true,
+        message: "✅ تم تعديل البيانات بنجاح",
+        data: updated
+    });
+});
+
+// ✅ حذف سعر الكيلو
+export const deleteKiloPrice = asyncHandelr(async (req, res, next) => {
+    const { id } = req.params;
+
+    const deleted = await KiloPriceModel.findByIdAndDelete(id);
+
+    if (!deleted) {
+        return next(new Error("❌ لم يتم العثور على سعر الكيلو المطلوب حذفه", { cause: 404 }));
+    }
+
+    res.json({
+        success: true,
+        message: "🗑️ تم حذف سعر الكيلو بنجاح"
+    });
+});
+
+
+
+
+
+
+export const updateUserLocation = asyncHandelr(async (req, res, next) => {
+    const userId = req.user.id; // ✅ جلب userId من التوكن
+    const { longitude, latitude } = req.query; // ✅ جلب من query
+
+    // ✅ التحقق من القيم المطلوبة
+    if (longitude === undefined || latitude === undefined) {
+        return next(new Error("❌ يجب إرسال longitude و latitude في query", { cause: 400 }));
+    }
+
+    // ✅ التحقق من أن المستخدم موجود
+    const user = await Usermodel.findById(userId);
+    if (!user) {
+        return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+    }
+
+    // ✅ تحديث الإحداثيات
+    user.location = {
+        type: "Point",
+        coordinates: [parseFloat(longitude), parseFloat(latitude)], // تحويل النص إلى رقم
+    };
+
+    await user.save();
+
+    return res.json({
+        success: true,
+        message: "✅ تم تحديث إحداثيات المستخدم بنجاح",
+        data: {
+            userId: user._id,
+            longitude: parseFloat(longitude),
+            latitude: parseFloat(latitude)
+        }
+    });
+});
 
 
 
@@ -524,6 +820,8 @@ export const forgetpassword = asyncHandelr(async (req, res, next) => {
 
     return successresponse(res);
 });
+
+
 
 
 
@@ -815,134 +1113,70 @@ export async function verifyOTP(phone, otp) {
 
 
 export const confirEachOtp = asyncHandelr(async (req, res, next) => {
-    const { code, email, phone } = req.body;
-    const { fedk, fedkdrivers } = req.query;
+    const { code, phone } = req.body;
 
-    if (!code || (!email && !phone)) {
-        return next(new Error("يرجى إدخال الكود ورقم الهاتف أو البريد الإلكتروني", { cause: 400 }));
+    if (!code || !phone) {
+        return next(new Error("يرجى إدخال الكود ورقم الهاتف", { cause: 400 }));
     }
 
-    let baseFilter = {};
-    if (email) baseFilter.email = email;
-    if (phone) baseFilter.phone = phone;
+    const baseFilter = { phone };
 
-    if (fedk) {
-        baseFilter.$or = [
-            { accountType: "User" },
-            { accountType: "ServiceProvider", serviceType: { $in: ["Host", "Doctor"] } }
-        ];
+    // ✅ تحقق عن طريق الهاتف فقط
+    const user = await dbservice.findOne({
+        model: Usermodel,
+        filter: baseFilter
+    });
+
+    if (!user) return next(new Error("رقم الهاتف غير مسجل", { cause: 404 }));
+
+    if (user.isConfirmed) {
+        return successresponse(res, "✅ رقم الهاتف تم تأكيده مسبقًا", 200, { user });
     }
 
-    if (fedkdrivers) {
-        baseFilter.$or = [
-            { accountType: "ServiceProvider", serviceType: { $in: ["Driver", "Delivery"] } }
-        ];
-    }
-
-    // ✅ تحقق عن طريق الهاتف
-    if (phone) {
-        const user = await dbservice.findOne({
-            model: Usermodel,
-            filter: baseFilter
-        });
-
-        if (!user) return next(new Error("رقم الهاتف غير مسجل", { cause: 404 }));
-
-        if (user.isConfirmed) {
-            return successresponse(res, "✅ رقم الهاتف تم تأكيده مسبقًا", 200, { user });
-        }
-
-        try {
-            const response = await axios.post(
-                "https://authentica1.p.rapidapi.com/api/v2/verify-otp",
-                { phone, otp: code },
-                {
-                    headers: {
-                        "x-rapidapi-key": process.env.AUTHENTICA_API_KEY,
-                        "x-rapidapi-host": "authentica1.p.rapidapi.com",
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
-                }
-            );
-
-            console.log("📩 AUTHENTICA response:", response.data);
-
-           if (response.data?.status === true || response.data?.message === "OTP verified successfully") {
-                await dbservice.updateOne({
-                    model: Usermodel,
-                    filter: { _id: user._id },
-                    data: { isConfirmed: true },
-                });
-
-                const access_Token = generatetoken({ payload: { id: user._id } });
-                const refreshToken = generatetoken({
-                    payload: { id: user._id },
-                    expiresIn: "365d",
-                });
-
-                return successresponse(res, "✅ تم التحقق من رقم الهاتف بنجاح", 200, {
-                    access_Token,
-                    refreshToken,
-                    user,
-                });
-            } else {
-                return next(new Error("❌ كود التحقق غير صحيح", { cause: 400 }));
+    try {
+        const response = await axios.post(
+            "https://authentica1.p.rapidapi.com/api/v2/verify-otp",
+            { phone, otp: code },
+            {
+                headers: {
+                    "x-rapidapi-key": process.env.AUTHENTICA_API_KEY,
+                    "x-rapidapi-host": "authentica1.p.rapidapi.com",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
             }
+        );
 
-        } catch (error) {
-            console.error("❌ AUTHENTICA Error:", error.response?.data || error.message);
-            return next(new Error("❌ فشل التحقق من OTP عبر الهاتف", { cause: 500 }));
-        }
-    }
+        console.log("📩 AUTHENTICA response:", response.data);
 
-    // ✅ تحقق عن طريق البريد الإلكتروني
-    if (email) {
-        const user = await dbservice.findOne({
-            model: Usermodel,
-            filter: baseFilter
-        });
+        if (response.data?.status === true || response.data?.message === "OTP verified successfully") {
+            await dbservice.updateOne({
+                model: Usermodel,
+                filter: { _id: user._id },
+                data: { isConfirmed: true },
+            });
 
-        if (!user) return next(new Error("البريد الإلكتروني غير مسجل", { cause: 404 }));
+            const access_Token = generatetoken({ payload: { id: user._id } });
+            const refreshToken = generatetoken({
+                payload: { id: user._id },
+                expiresIn: "365d",
+            });
 
-        if (user.isConfirmed) {
-            return successresponse(res, "✅ البريد الإلكتروني تم تأكيده مسبقًا", 200, { user });
-        }
-
-        if (Date.now() > new Date(user.otpExpiresAt).getTime()) {
-            return next(new Error("انتهت صلاحية الكود", { cause: 400 }));
-        }
-
-        const isValidOTP = comparehash({ planText: `${code}`, valuehash: user.emailOTP });
-        if (!isValidOTP) {
-            const attempts = (user.attemptCount || 0) + 1;
-            if (attempts >= 5) {
-                await Usermodel.updateOne({ email }, {
-                    blockUntil: new Date(Date.now() + 2 * 60 * 1000),
-                    attemptCount: 0
-                });
-                return next(new Error("تم حظرك مؤقتًا بعد محاولات خاطئة كثيرة", { cause: 429 }));
-            }
-
-            await Usermodel.updateOne({ email }, { attemptCount: attempts });
-            return next(new Error("كود التحقق غير صحيح", { cause: 400 }));
+            return successresponse(res, "✅ تم التحقق من رقم الهاتف بنجاح", 200, {
+                access_Token,
+                refreshToken,
+                user,
+            });
+        } else {
+            return next(new Error("❌ كود التحقق غير صحيح", { cause: 400 }));
         }
 
-        await Usermodel.updateOne({ _id: user._id }, {
-            isConfirmed: true,
-            $unset: { emailOTP: 0, otpExpiresAt: 0, attemptCount: 0, blockUntil: 0 }
-        });
-
-        const access_Token = generatetoken({ payload: { id: user._id } });
-        const refreshToken = generatetoken({ payload: { id: user._id }, expiresIn: "365d" });
-
-        return successresponse(res, "✅ تم تأكيد البريد الإلكتروني بنجاح", 200, {
-            access_Token,
-            refreshToken,
-            user
-        });
+    } catch (error) {
+        console.error("❌ AUTHENTICA Error:", error.response?.data || error.message);
+        return next(new Error("❌ فشل التحقق من OTP عبر الهاتف", { cause: 500 }));
     }
 });
+
 
 
 

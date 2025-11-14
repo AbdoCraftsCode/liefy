@@ -159,40 +159,22 @@ export async function sendOTP(phone, method = "whatsapp") {
 
 
 export const signup = asyncHandelr(async (req, res, next) => {
-    const { fullName, password, email, phone } = req.body;
+    const { fullName, password, phone, accountType } = req.body;
 
-    // ✅ تحقق من وجود واحد من الاتنين فقط
-    if (!email && !phone) {
-        return next(new Error("يجب إدخال البريد الإلكتروني أو رقم الهاتف", { cause: 400 }));
+    // ✅ تحقق من وجود رقم الهاتف
+    if (!phone) {
+        return next(new Error("يجب إدخال رقم الهاتف", { cause: 400 }));
     }
 
-    // ✅ تحقق من عدم تكرار الإيميل أو رقم الهاتف
+    // ✅ تحقق من عدم تكرار رقم الهاتف
     const checkuser = await dbservice.findOne({
         model: Usermodel,
-        filter: {
-            $or: [
-                ...(email ? [{ email }] : []),
-                ...(phone ? [{ phone }] : [])
-            ]
-        }
+        filter: { phone }
     });
 
     // ✅ لو المستخدم موجود بالفعل
     if (checkuser) {
-        // 👇 الشرط الجديد:
-        if (checkuser.accountType === "ServiceProvider" &&
-            (checkuser.serviceType === "Delivery" || checkuser.serviceType === "Driver")) {
-            // 🟢 مسموح يكمل تسجيل كمستخدم عادي
-            console.log("✅ نفس الإيميل/الهاتف موجود لمقدم خدمة Delivery أو Driver — السماح بالتسجيل كمستخدم عادي.");
-        } else {
-            // ❌ لو مش مقدم خدمة — ممنوع التسجيل
-            if (checkuser.email === email) {
-                return next(new Error("البريد الإلكتروني مستخدم من قبل", { cause: 400 }));
-            }
-            if (checkuser.phone === phone) {
-                return next(new Error("رقم الهاتف مستخدم من قبل", { cause: 400 }));
-            }
-        }
+        return next(new Error("رقم الهاتف مستخدم من قبل", { cause: 400 }));
     }
 
     // ✅ تشفير كلمة المرور
@@ -204,40 +186,15 @@ export const signup = asyncHandelr(async (req, res, next) => {
         data: {
             fullName,
             password: hashpassword,
-            email,
             phone,
-            accountType: 'User',  // 👈 تحديد إنه مستخدم عادي
+            accountType ,  // 👈 تحديد إنه مستخدم عادي
         }
     });
 
-    // ✅ إرسال OTP
+    // ✅ إرسال OTP للهاتف فقط
     try {
-        if (phone) {
-            await sendOTP(phone);
-            console.log(`📩 OTP تم إرساله إلى الهاتف: ${phone}`);
-        }
-        else if (email) {
-            const otp = customAlphabet("0123456789", 4)();
-            const html = vervicaionemailtemplet({ code: otp });
-
-            const emailOTP = await generatehash({ planText: `${otp}` });
-            const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-            await Usermodel.updateOne(
-                { _id: user._id },
-                { emailOTP, otpExpiresAt, attemptCount: 0 }
-            );
-
-            await sendemail({
-                to: email,
-                subject: "Confirm Email",
-                text: "رمز التحقق الخاص بك",
-                html,
-            });
-
-            console.log(`📩 OTP تم إرساله إلى البريد: ${email}`);
-        }
-
+        await sendOTP(phone);
+        console.log(`📩 OTP تم إرساله إلى الهاتف: ${phone}`);
     } catch (error) {
         console.error("❌ فشل في إرسال OTP:", error.message);
         return next(new Error("فشل في إرسال رمز التحقق", { cause: 500 }));
@@ -245,6 +202,8 @@ export const signup = asyncHandelr(async (req, res, next) => {
 
     return successresponse(res, "تم إنشاء الحساب بنجاح، وتم إرسال رمز التحقق", 201);
 });
+
+
 
 
 
@@ -351,107 +310,41 @@ export const signup = asyncHandelr(async (req, res, next) => {
 
 
 export const forgetPassword = asyncHandelr(async (req, res, next) => {
-    const { email, phone } = req.body;
-    const { fedk, fedkdrivers } = req.query;
+    const { phone } = req.body;
 
-    if (!email && !phone) {
-        return next(new Error("❌ يجب إدخال البريد الإلكتروني أو رقم الهاتف", { cause: 400 }));
+    if (!phone) {
+        return next(new Error("❌ يجب إدخال رقم الهاتف", { cause: 400 }));
     }
 
-    let baseFilter = {
-        $or: [
-            ...(email ? [{ email }] : []),
-            ...(phone ? [{ phone }] : [])
-        ]
-    };
-
-    if (fedk) {
-        baseFilter.$or = [
-            ...(email ? [
-                { email, accountType: "User" },
-                { email, accountType: "ServiceProvider", serviceType: { $in: ["Host", "Doctor"] } }
-            ] : []),
-            ...(phone ? [
-                { phone, accountType: "User" },
-                { phone, accountType: "ServiceProvider", serviceType: { $in: ["Host", "Doctor"] } }
-            ] : [])
-        ];
-    }
-
-    if (fedkdrivers) {
-        baseFilter.$or = [
-            ...(email ? [
-                { email, accountType: "ServiceProvider", serviceType: { $in: ["Driver", "Delivery"] } }
-            ] : []),
-            ...(phone ? [
-                { phone, accountType: "ServiceProvider", serviceType: { $in: ["Driver", "Delivery"] } }
-            ] : [])
-        ];
-    }
-
-    const user = await Usermodel.findOne(baseFilter);
+    // ✅ البحث عن المستخدم عبر رقم الهاتف فقط
+    const user = await Usermodel.findOne({ phone });
 
     if (!user) {
         return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
     }
 
-    if (phone) {
-        try {
-            const response = await sendOTP(phone, "whatsapp"); // ✅ نستخدم الدالة الجاهزة
+    try {
+        // ✅ إرسال OTP للهاتف
+        const response = await sendOTP(phone, "whatsapp");
 
-            console.log("✅ OTP تم إرساله بنجاح:", response);
+        console.log("✅ OTP تم إرساله بنجاح:", response);
 
-            return res.json({
-                success: true,
-                message: "✅ تم إرسال كود التحقق إلى رقم الهاتف",
-                user,
-                otpInfo: response // 👈 لعرض بيانات الإرسال لو حبيت
-            });
-        } catch (error) {
-            console.error("❌ فشل في إرسال OTP للهاتف:", error.response?.data || error.message);
-            return res.status(500).json({
-                success: false,
-                error: "❌ فشل في إرسال كود التحقق عبر الهاتف",
-                details: error.response?.data || error.message
-            });
-        }
-    }
-
-    if (email) {
-        try {
-            const otp = customAlphabet("0123456789", 4)();
-            const html = vervicaionemailtemplet({ code: otp });
-            const hashedOtp = await generatehash({ planText: otp });
-            const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-            await Usermodel.updateOne(
-                { _id: user._id },
-                { emailOTP: hashedOtp, otpExpiresAt, attemptCount: 0 }
-            );
-
-            await sendemail({
-                to: email,
-                subject: "🔐 استعادة كلمة المرور",
-                text: "رمز استعادة كلمة المرور",
-                html,
-            });
-
-            console.log(`📩 تم إرسال الكود إلى البريد: ${email}`);
-            return res.json({
-                success: true,
-                message: "✅ تم إرسال كود التحقق إلى البريد الإلكتروني",
-                user, // 👈 إرجاع بيانات المستخدم كاملة هنا
-            });
-        } catch (error) {
-            console.error("❌ فشل في إرسال كود عبر البريد:", error.message);
-            return res.status(500).json({
-                success: false,
-                error: "❌ فشل في إرسال كود التحقق عبر البريد",
-                details: error.message
-            });
-        }
+        return res.json({
+            success: true,
+            message: "✅ تم إرسال كود التحقق إلى رقم الهاتف",
+            user,
+            otpInfo: response // 👈 بيانات الإرسال
+        });
+    } catch (error) {
+        console.error("❌ فشل في إرسال OTP للهاتف:", error.response?.data || error.message);
+        return res.status(500).json({
+            success: false,
+            error: "❌ فشل في إرسال كود التحقق عبر الهاتف",
+            details: error.response?.data || error.message
+        });
     }
 });
+
 
 
 
@@ -758,128 +651,45 @@ export const forgetPassword = asyncHandelr(async (req, res, next) => {
 
 
 
-
 export const resetPassword = asyncHandelr(async (req, res, next) => {
-    const { email, phone, otp, newPassword, accountType, serviceType } = req.body;
+    const { phone, otp, newPassword } = req.body;
 
-    if ((!email && !phone) || !otp || !newPassword) {
-        return next(new Error("❌ برجاء إدخال (إيميل أو رقم هاتف) + كود التحقق + كلمة المرور الجديدة", { cause: 400 }));
+    if (!phone || !otp || !newPassword) {
+        return next(new Error("❌ برجاء إدخال رقم الهاتف + كود التحقق + كلمة المرور الجديدة", { cause: 400 }));
     }
 
-    let user;
-
-    // ✅ تحديد المستخدم بدقة حسب نوع الحساب
-    if (accountType === "User") {
-        user = await Usermodel.findOne({
-            $or: [
-                ...(email ? [{ email, accountType: "User" }] : []),
-                ...(phone ? [{ phone, accountType: "User" }] : []),
-            ]
-        });
-    }
-    else if (accountType === "ServiceProvider") {
-        if (!serviceType) {
-            return next(new Error("❌ يجب إدخال نوع الخدمة (serviceType) لمقدمي الخدمة", { cause: 400 }));
-        }
-
-        user = await Usermodel.findOne({
-            $or: [
-                ...(email ? [{ email, accountType: "ServiceProvider", serviceType }] : []),
-                ...(phone ? [{ phone, accountType: "ServiceProvider", serviceType }] : []),
-            ]
-        });
-    }
-    else {
-        return next(new Error("❌ نوع الحساب غير صحيح", { cause: 400 }));
-    }
-
+    const user = await Usermodel.findOne({ phone });
     if (!user) {
-        const userAsServiceProvider = await Usermodel.findOne({ email, accountType: "ServiceProvider" });
-        if (userAsServiceProvider) {
-            return next(new Error("🚫 البريد يخص حساب مزود خدمة وليس مستخدم عادي", { cause: 400 }));
-        }
         return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
     }
 
-    // ✅ حالة الإيميل
-    if (email) {
-        if (user.accountType !== accountType) {
-            return next(new Error("🚫 نوع الحساب المرسل لا يطابق نوع الحساب المسجل بالبريد", { cause: 400 }));
-        }
+    try {
+        // ✅ التحقق من كود OTP عبر خدمة Authentica
+        const response = await verifyOTP(phone, otp);
 
-        if (!user.emailOTP) {
-            return next(new Error("❌ لم يتم إرسال كود تحقق لهذا الحساب", { cause: 400 }));
-        }
+        if (response?.status === true || response?.message?.includes("verified")) {
+            const hashedPassword = await generatehash({ planText: newPassword });
 
-        if (Date.now() > new Date(user.otpExpiresAt).getTime()) {
-            return next(new Error("❌ انتهت صلاحية كود التحقق", { cause: 400 }));
-        }
-
-        const isValidOTP = await comparehash({ planText: `${otp}`, valuehash: user.emailOTP });
-
-        if (!isValidOTP) {
-            const attempts = (user.attemptCount || 0) + 1;
-            if (attempts >= 5) {
-                await Usermodel.updateOne({ email }, {
-                    blockUntil: new Date(Date.now() + 2 * 60 * 1000),
-                    attemptCount: 0
-                });
-                return next(new Error("🚫 تم حظرك مؤقتًا بعد محاولات خاطئة كثيرة", { cause: 429 }));
-            }
-            await Usermodel.updateOne({ email }, { attemptCount: attempts });
-            return next(new Error("❌ كود التحقق غير صحيح", { cause: 400 }));
-        }
-
-        const hashedPassword = await generatehash({ planText: newPassword });
-        await Usermodel.updateOne(
-            { _id: user._id },
-            {
-                password: hashedPassword,
-                $unset: {
-                    emailOTP: 0,
-                    otpExpiresAt: 0,
-                    attemptCount: 0,
-                    blockUntil: 0,
-                },
-            }
-        );
-
-        return successresponse(res, "✅ تم تغيير كلمة المرور بنجاح عبر البريد الإلكتروني", 200);
-    }
-
-    // ✅ حالة الهاتف (مع فلترة دقيقة حسب نوع الحساب)
-    if (phone) {
-        try {
-            // ✅ التحقق من OTP عبر RapidAPI (Authentica)
-            const response = await verifyOTP(phone, otp);
-
-            if (response?.status === true || response?.message?.includes("verified")) {
-                const hashedPassword = await generatehash({ planText: newPassword });
-
-                const filter = { phone, accountType };
-                if (accountType === "ServiceProvider" && serviceType) {
-                    filter.serviceType = serviceType;
+            await Usermodel.updateOne(
+                { _id: user._id },
+                {
+                    password: hashedPassword,
+                    isConfirmed: true,
+                    changeCredentialTime: Date.now(),
                 }
+            );
 
-                await Usermodel.updateOne(
-                    filter,
-                    {
-                        password: hashedPassword,
-                        isConfirmed: true,
-                        changeCredentialTime: Date.now(),
-                    }
-                );
-
-                return successresponse(res, "✅ تم إعادة تعيين كلمة المرور بنجاح عبر الهاتف", 200);
-            } else {
-                return next(new Error("❌ كود التحقق غير صحيح أو منتهي الصلاحية", { cause: 400 }));
-            }
-        } catch (error) {
-            console.error("❌ فشل التحقق من OTP عبر Authentica:", error.response?.data || error.message);
-            return next(new Error("❌ فشل التحقق من OTP عبر الهاتف", { cause: 500 }));
+            return successresponse(res, "✅ تم إعادة تعيين كلمة المرور بنجاح", 200);
+        } else {
+            return next(new Error("❌ كود التحقق غير صحيح أو منتهي الصلاحية", { cause: 400 }));
         }
+    } catch (error) {
+        console.error("❌ فشل التحقق من OTP عبر Authentica:", error.response?.data || error.message);
+        return next(new Error("❌ فشل التحقق من OTP عبر الهاتف", { cause: 500 }));
     }
 });
+
+
     
 
 
