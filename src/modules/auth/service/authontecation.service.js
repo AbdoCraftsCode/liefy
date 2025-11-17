@@ -491,6 +491,51 @@ export const getMyactiveOrders = asyncHandelr(async (req, res, next) => {
         data: myPendingOrders
     });
 });
+function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
+    const R = 6371; // نصف قطر الأرض بالكيلومتر
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+export const getPendingOrdersForDelivery = asyncHandelr(async (req, res, next) => {
+    const userId = req.user.id;
+
+    // ✅ جلب بيانات الدليفري
+    const deliveryUser = await Usermodel.findById(userId);
+    if (!deliveryUser) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+    const deliveryLat = deliveryUser.location.coordinates[1];
+    const deliveryLon = deliveryUser.location.coordinates[0];
+
+    // ✅ جلب المسافة المسموح بها
+    const config = await KiloPriceModel.findOne();
+    if (!config || !config.distance) return next(new Error("❌ لم يتم تحديد مسافة التوصيل", { cause: 400 }));
+    const maxDistance = config.distance;
+
+    // ✅ جلب كل الطلبات في حالة pending
+    const pendingOrders = await dliveryModel.find({ status: "pending" }).sort({ createdAt: 1 });
+
+    // ✅ فلترة الطلبات حسب المسافة
+    const nearbyOrders = pendingOrders.filter(order => {
+        const sourceLat = order.source.location.coordinates[1];
+        const sourceLon = order.source.location.coordinates[0];
+        const distanceToSource = getDistanceFromLatLonInKm(deliveryLat, deliveryLon, sourceLat, sourceLon);
+        return distanceToSource <= maxDistance;
+    });
+
+    return res.status(200).json({
+        success: true,
+        message: "✅ تم جلب الطلبات القريبة بنجاح",
+        count: nearbyOrders.length,
+        data: nearbyOrders
+    });
+});
 
 
 
