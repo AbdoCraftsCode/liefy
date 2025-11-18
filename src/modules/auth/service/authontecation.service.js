@@ -322,6 +322,86 @@ export const login = asyncHandelr(async (req, res, next) => {
 
 
 
+// export const createOrderClient = asyncHandelr(async (req, res, next) => {
+//     const userId = req.user.id;
+//     const {
+//         customerName,
+//         phone,
+//         sourceAddress,
+//         sourceLongitude,
+//         sourceLatitude,
+//         destinationAddress,
+//         destinationLongitude,
+//         destinationLatitude,
+//         orderPrice,
+//         deliveryPrice,
+//         // bonus = 0,
+//         totalPrice,
+//         orderDetails = ""
+//     } = req.body;
+
+//     // ✅ التحقق من الحقول المطلوبة
+//     // if (
+//     //     !customerName || !phone ||
+//     //     !sourceAddress || sourceLongitude === undefined || sourceLatitude === undefined ||
+//     //     !destinationAddress || destinationLongitude === undefined || destinationLatitude === undefined ||
+//     //     orderPrice === undefined || deliveryPrice === undefined || totalPrice === undefined
+//     // ) {
+//     //     return next(new Error("❌ جميع الحقول المطلوبة يجب إدخالها في body", { cause: 400 }));
+//     // }
+
+//     // ✅ التحقق من وجود المستخدم
+//     const user = await Usermodel.findById(userId);
+//     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+//     // ✅ رفع صورة الطلب (إن وُجدت)
+//     let uploadedImage = null;
+//     if (req.files?.image?.[0]) {
+//         const file = req.files.image[0];
+//         const uploaded = await cloud.uploader.upload(file.path, { folder: "orders/images" });
+//         uploadedImage = {
+//             secure_url: uploaded.secure_url,
+//             public_id: uploaded.public_id
+//         };
+//     }
+
+//     // ✅ إنشاء الطلب
+//     const newOrder = await dliveryModel.create({
+//         customerName,
+//         phone,
+//         source: {
+//             address: sourceAddress,
+//             location: {
+//                 type: "Point",
+//                 coordinates: [parseFloat(sourceLongitude), parseFloat(sourceLatitude)]
+//             }
+//         },
+//         destination: {
+//             address: destinationAddress,
+//             location: {
+//                 type: "Point",
+//                 coordinates: [parseFloat(destinationLongitude), parseFloat(destinationLatitude)]
+//             }
+//         },
+//         orderPrice: parseFloat(orderPrice),
+//         deliveryPrice: parseFloat(deliveryPrice),
+//         // bonus: parseFloat(bonus),
+//         totalPrice: parseFloat(totalPrice),
+//         orderDetails: orderDetails.toString(),
+//         image: uploadedImage,
+//         createdBy: userId
+//     });
+
+//     return res.status(201).json({
+//         success: true,
+//         message: "✅ تم إنشاء الطلب بنجاح",
+//         data: newOrder
+//     });
+// });
+
+
+
+
 export const createOrderClient = asyncHandelr(async (req, res, next) => {
     const userId = req.user.id;
     const {
@@ -335,26 +415,33 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         destinationLatitude,
         orderPrice,
         deliveryPrice,
-        // bonus = 0,
         totalPrice,
         orderDetails = ""
     } = req.body;
-
-    // ✅ التحقق من الحقول المطلوبة
-    // if (
-    //     !customerName || !phone ||
-    //     !sourceAddress || sourceLongitude === undefined || sourceLatitude === undefined ||
-    //     !destinationAddress || destinationLongitude === undefined || destinationLatitude === undefined ||
-    //     orderPrice === undefined || deliveryPrice === undefined || totalPrice === undefined
-    // ) {
-    //     return next(new Error("❌ جميع الحقول المطلوبة يجب إدخالها في body", { cause: 400 }));
-    // }
 
     // ✅ التحقق من وجود المستخدم
     const user = await Usermodel.findById(userId);
     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
 
-    // ✅ رفع صورة الطلب (إن وُجدت)
+    // ✅ تجهيز الأرقام لو موجودة فقط
+    const _orderPrice = orderPrice ? parseFloat(orderPrice) : undefined;
+    const _deliveryPrice = deliveryPrice ? parseFloat(deliveryPrice) : undefined;
+    const _totalPrice = totalPrice ? parseFloat(totalPrice) : undefined;
+
+    // ❗ لو القيمة موجودة لكن مش رقم → رجّع Error منطقي
+    if (orderPrice && isNaN(_orderPrice)) {
+        return next(new Error("⚠️ orderPrice يجب أن يكون رقم", { cause: 400 }));
+    }
+
+    if (deliveryPrice && isNaN(_deliveryPrice)) {
+        return next(new Error("⚠️ deliveryPrice يجب أن يكون رقم", { cause: 400 }));
+    }
+
+    if (totalPrice && isNaN(_totalPrice)) {
+        return next(new Error("⚠️ totalPrice يجب أن يكون رقم", { cause: 400 }));
+    }
+
+    // ✅ رفع صورة الطلب (إن وجدت)
     let uploadedImage = null;
     if (req.files?.image?.[0]) {
         const file = req.files.image[0];
@@ -373,20 +460,25 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
             address: sourceAddress,
             location: {
                 type: "Point",
-                coordinates: [parseFloat(sourceLongitude), parseFloat(sourceLatitude)]
+                coordinates: [
+                    parseFloat(sourceLongitude),
+                    parseFloat(sourceLatitude)
+                ]
             }
         },
         destination: {
             address: destinationAddress,
             location: {
                 type: "Point",
-                coordinates: [parseFloat(destinationLongitude), parseFloat(destinationLatitude)]
+                coordinates: [
+                    parseFloat(destinationLongitude),
+                    parseFloat(destinationLatitude)
+                ]
             }
         },
-        orderPrice: parseFloat(orderPrice),
-        deliveryPrice: parseFloat(deliveryPrice),
-        // bonus: parseFloat(bonus),
-        totalPrice: parseFloat(totalPrice),
+        orderPrice: _orderPrice,
+        deliveryPrice: _deliveryPrice,
+        totalPrice: _totalPrice,
         orderDetails: orderDetails.toString(),
         image: uploadedImage,
         createdBy: userId
