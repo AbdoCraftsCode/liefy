@@ -341,14 +341,14 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
     } = req.body;
 
     // ✅ التحقق من الحقول المطلوبة
-    if (
-        !customerName || !phone ||
-        !sourceAddress || sourceLongitude === undefined || sourceLatitude === undefined ||
-        !destinationAddress || destinationLongitude === undefined || destinationLatitude === undefined ||
-        orderPrice === undefined || deliveryPrice === undefined || totalPrice === undefined
-    ) {
-        return next(new Error("❌ جميع الحقول المطلوبة يجب إدخالها في body", { cause: 400 }));
-    }
+    // if (
+    //     !customerName || !phone ||
+    //     !sourceAddress || sourceLongitude === undefined || sourceLatitude === undefined ||
+    //     !destinationAddress || destinationLongitude === undefined || destinationLatitude === undefined ||
+    //     orderPrice === undefined || deliveryPrice === undefined || totalPrice === undefined
+    // ) {
+    //     return next(new Error("❌ جميع الحقول المطلوبة يجب إدخالها في body", { cause: 400 }));
+    // }
 
     // ✅ التحقق من وجود المستخدم
     const user = await Usermodel.findById(userId);
