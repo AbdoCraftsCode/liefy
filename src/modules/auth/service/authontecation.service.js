@@ -491,6 +491,91 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
     });
 });
 
+
+
+import Stripe from "stripe";
+import { Payment } from "../../../DB/models/paymentSchema.js";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET);
+
+export const createPaymentIntent = async (req, res) => {
+    try {
+        const { productId, amount, currency } = req.body;
+
+        if (!amount || !productId) {
+            return res.status(400).json({ message: "amount و productId مطلوبين" });
+        }
+
+        // إنشاء PaymentIntent في Stripe
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount * 100,
+            currency: currency || "usd",
+            metadata: {
+                productId,
+                userId: req.user._id.toString(),
+            },
+        });
+
+        // حفظ العملية في قاعدة البيانات
+        await Payment.create({
+            userId: req.user._id, // استخراج الـ _id من التوكن
+            productId,
+            amount,
+            currency: currency || "usd",
+            status: "pending",
+            stripePaymentIntentId: paymentIntent.id
+        });
+
+        res.json({
+            clientSecret: paymentIntent.client_secret
+        });
+
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+
+
+
+
+
+
+export const stripeWebhook = async (req, res) => {
+    const sig = req.headers["stripe-signature"];
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(
+            req.body,
+            sig,
+            process.env.STRIPE_WEBHOOK_SECRET
+        );
+    } catch (err) {
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === "payment_intent.succeeded") {
+        const paymentIntent = event.data.object;
+
+        // تحديث حالة الدفع في قاعدة البيانات
+        await Payment.findOneAndUpdate(
+            { stripePaymentIntentId: paymentIntent.id },
+            { status: "succeeded" }
+        );
+
+        console.log("✔ تم الدفع بنجاح", {
+            productId: paymentIntent.metadata.productId,
+            userId: paymentIntent.metadata.userId,
+            amount: paymentIntent.amount / 100
+        });
+    }
+
+    res.json({ received: true });
+};
+
+
+
+
 export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
     const userId = req.user.id; // ✅ جلب userId من التوكن
 
