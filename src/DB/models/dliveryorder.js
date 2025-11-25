@@ -84,6 +84,28 @@ const OrderSchema = new mongoose.Schema({
         unique: true,
         default: () => `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`
     },
+
+    negotiations: [
+        {
+            offeredBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User",
+                required: true
+            },
+            newDeliveryPrice: {
+                type: Number,
+                required: true
+            },
+            message: {
+                type: String,
+                default: ""
+            },
+            createdAt: {
+                type: Date,
+                default: Date.now
+            }
+        }
+    ],
     createdAt: {
         type: Date,
         default: Date.now

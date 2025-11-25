@@ -1056,6 +1056,69 @@ export const updateOrderStatusdlivery = async (req, res) => {
 };
 
 
+export const createNegotiation = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { newDeliveryPrice, message } = req.body;
+
+        // التحقق من نوع الحساب
+        if (req.user.accountType !== "ServiceProvider") {
+            return res.status(403).json({
+                success: false,
+                message: "غير مصرح — التفاوض مسموح فقط لمقدم الخدمة"
+            });
+        }
+
+        if (!newDeliveryPrice) {
+            return res.status(400).json({
+                success: false,
+                message: "newDeliveryPrice مطلوب"
+            });
+        }
+
+        // البحث عن الطلب
+        const order = await dliveryModel.findById(orderId);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "الطلب غير موجود"
+            });
+        }
+
+        // يمكن التفاوض فقط إذا الطلب pending أو active
+        if (!["pending", "active"].includes(order.status)) {
+            return res.status(400).json({
+                success: false,
+                message: "لا يمكن التفاوض على هذا الطلب الآن"
+            });
+        }
+
+        // إضافة التفاوض
+        order.negotiations.push({
+            offeredBy: req.user._id,
+            newDeliveryPrice,
+            message: message || ""
+        });
+
+        await order.save();
+
+        res.status(201).json({
+            success: true,
+            message: "تم إضافة التفاوض بنجاح",
+            data: order.negotiations[order.negotiations.length - 1]
+        });
+
+    } catch (err) {
+        console.error("❌ Create Negotiation Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "خطأ أثناء إنشاء التفاوض"
+        });
+    }
+};
+
+
+
 
 
 
