@@ -582,6 +582,7 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
 
 import Stripe from "stripe";
 import { Payment } from "../../../DB/models/paymentSchema.js";
+import { FavoritePlace } from "../../../DB/models/FavoritePlace.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -882,6 +883,68 @@ export const refundPayment = async (req, res) => {
         });
     }
 };
+
+
+
+export const addFavoritePlace = async (req, res) => {
+    try {
+        const { name, address, latitude, longitude } = req.body;
+
+        if (!name || !address || !latitude || !longitude) {
+            return res.status(400).json({
+                success: false,
+                message: "name, address, latitude, longitude مطلوبين"
+            });
+        }
+
+        const favorite = await FavoritePlace.create({
+            userId: req.user._id,
+            name,
+            address,
+            location: {
+                type: "Point",
+                coordinates: [longitude, latitude]
+            }
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "تم إضافة المكان إلى المفضلة",
+            data: favorite
+        });
+
+    } catch (err) {
+        console.error("❌ Add Favorite Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء إضافة المفضلة"
+        });
+    }
+};
+
+
+export const getMyFavoritePlaces = async (req, res) => {
+    try {
+        const favorites = await FavoritePlace.find({ userId: req.user._id });
+
+        res.status(200).json({
+            success: true,
+            count: favorites.length,
+            data: favorites
+        });
+
+    } catch (err) {
+        console.error("❌ Get Favorites Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب المفضلات"
+        });
+    }
+};
+
+
+
+
 
 
 
