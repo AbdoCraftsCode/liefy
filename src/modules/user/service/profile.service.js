@@ -550,7 +550,7 @@ export const savetoken = asyncHandelr(async (req, res, next) => {
     const { userId, fcmToken } = req.body;
 
     if (!userId || !fcmToken) {
-        return res.status(400).json({ message: "userId و fcmToken مطلوبين" });
+        return res.status(400).json({ message: "userId و fcmToken مطلوبين يا غبي" });
     }
 
     try {
