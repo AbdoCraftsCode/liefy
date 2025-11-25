@@ -923,6 +923,48 @@ export const addFavoritePlace = async (req, res) => {
 };
 
 
+export const deleteFavoritePlace = async (req, res) => {
+    try {
+        const { favoriteId } = req.params;
+
+        if (!favoriteId) {
+            return res.status(400).json({
+                success: false,
+                message: "favoriteId مطلوب"
+            });
+        }
+
+        // البحث عن المفضلة
+        const favorite = await FavoritePlace.findOne({
+            _id: favoriteId,
+            userId: req.user._id
+        });
+
+        if (!favorite) {
+            return res.status(404).json({
+                success: false,
+                message: "المكان غير موجود أو غير تابع لهذا المستخدم"
+            });
+        }
+
+        // حذف المفضلة
+        await FavoritePlace.deleteOne({ _id: favoriteId });
+
+        res.status(200).json({
+            success: true,
+            message: "تم حذف المكان من المفضلة بنجاح"
+        });
+
+    } catch (err) {
+        console.error("❌ Delete Favorite Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء حذف المفضلة"
+        });
+    }
+};
+
+
 export const getMyFavoritePlaces = async (req, res) => {
     try {
         const favorites = await FavoritePlace.find({ userId: req.user._id });
