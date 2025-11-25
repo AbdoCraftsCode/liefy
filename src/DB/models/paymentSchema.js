@@ -6,7 +6,7 @@ const paymentSchema = new mongoose.Schema({
         ref: "User",
         required: true
     },
-    productId: {
+    tripPriceId: {
         type: String, // أو ObjectId لو عندك منتجات مخزنة في قاعدة بيانات
         required: true
     },
