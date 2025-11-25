@@ -185,7 +185,7 @@ routr.post(
 
 routr.post("/signup", signup)
 
-routr.post("/verifyPayment", verifyPayment)
+routr.post("/verifyPayment",authentication() ,verifyPayment)
 
 routr.get("/getAllImages", getAllImages)
 routr.get("/getSupermarket", getSupermarket)
