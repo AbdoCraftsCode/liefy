@@ -493,85 +493,389 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
 
 
 
+// import Stripe from "stripe";
+// import { Payment } from "../../../DB/models/paymentSchema.js";
+
+// const stripe = new Stripe(process.env.STRIPE_SECRET);
+
+// export const createPaymentIntent = async (req, res) => {
+//     try {
+//         const { productId, amount, currency } = req.body;
+
+//         if (!amount || !productId) {
+//             return res.status(400).json({ message: "amount و productId مطلوبين" });
+//         }
+
+//         // إنشاء PaymentIntent في Stripe
+//         const paymentIntent = await stripe.paymentIntents.create({
+//             amount: amount * 100,
+//             currency: currency || "usd",
+//             metadata: {
+//                 productId,
+//                 userId: req.user._id.toString(),
+//             },
+//         });
+
+//         // حفظ العملية في قاعدة البيانات
+//         await Payment.create({
+//             userId: req.user._id, // استخراج الـ _id من التوكن
+//             productId,
+//             amount,
+//             currency: currency || "usd",
+//             status: "pending",
+//             stripePaymentIntentId: paymentIntent.id
+//         });
+
+//         res.json({
+//             clientSecret: paymentIntent.client_secret
+//         });
+
+//     } catch (err) {
+//         res.status(500).json({ error: err.message });
+//     }
+// };
+
+
+
+
+
+
+// export const stripeWebhook = async (req, res) => {
+//     const sig = req.headers["stripe-signature"];
+//     let event;
+
+//     try {
+//         event = stripe.webhooks.constructEvent(
+//             req.body,
+//             sig,
+//             process.env.STRIPE_WEBHOOK_SECRET
+//         );
+//     } catch (err) {
+//         return res.status(400).send(`Webhook Error: ${err.message}`);
+//     }
+
+//     if (event.type === "payment_intent.succeeded") {
+//         const paymentIntent = event.data.object;
+
+//         // تحديث حالة الدفع في قاعدة البيانات
+//         await Payment.findOneAndUpdate(
+//             { stripePaymentIntentId: paymentIntent.id },
+//             { status: "succeeded" }
+//         );
+
+//         console.log("✔ تم الدفع بنجاح", {
+//             productId: paymentIntent.metadata.productId,
+//             userId: paymentIntent.metadata.userId,
+//             amount: paymentIntent.amount / 100
+//         });
+//     }
+
+//     res.json({ received: true });
+//  };
+
+
+// ============================================
+// 💳 Stripe Payment Controller
+// مع استبدال productId بـ tripPriceId
+// + إضافة تعليقات عربية توضيحية
+// ============================================
+
 import Stripe from "stripe";
 import { Payment } from "../../../DB/models/paymentSchema.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
+// ============================================
+// 1️⃣ إنشاء Payment Intent
+// يتم استدعاؤه من تطبيق Flutter لبدء عملية الدفع
+// ============================================
 export const createPaymentIntent = async (req, res) => {
     try {
-        const { productId, amount, currency } = req.body;
+        const { tripPriceId, amount, currency } = req.body;
 
-        if (!amount || !productId) {
-            return res.status(400).json({ message: "amount و productId مطلوبين" });
+        // 🛑 التحقق من المدخلات
+        if (!amount || !tripPriceId) {
+            return res.status(400).json({
+                message: "amount و tripPriceId مطلوبين"
+            });
         }
 
-        // إنشاء PaymentIntent في Stripe
+        if (amount <= 0) {
+            return res.status(400).json({
+                message: "المبلغ يجب أن يكون أكبر من صفر"
+            });
+        }
+
+        if (!req.user?._id) {
+            return res.status(401).json({
+                message: "غير مصرح - يجب تسجيل الدخول"
+            });
+        }
+
+        // ⚡ إنشاء Payment Intent على Stripe
         const paymentIntent = await stripe.paymentIntents.create({
-            amount: amount * 100,
+            amount: Math.round(amount * 100), // التحويل إلى أصغر وحدة (سنت)
             currency: currency || "usd",
             metadata: {
-                productId,
+                tripPriceId,
                 userId: req.user._id.toString(),
             },
+            automatic_payment_methods: { enabled: true },
         });
 
-        // حفظ العملية في قاعدة البيانات
-        await Payment.create({
-            userId: req.user._id, // استخراج الـ _id من التوكن
-            productId,
+        // 💾 تخزين عملية الدفع في قاعدة البيانات
+        const payment = await Payment.create({
+            userId: req.user._id,
+            tripPriceId,
             amount,
             currency: currency || "usd",
             status: "pending",
-            stripePaymentIntentId: paymentIntent.id
+            stripePaymentIntentId: paymentIntent.id,
+            createdAt: new Date()
         });
 
-        res.json({
-            clientSecret: paymentIntent.client_secret
+        // 🔁 إعادة clientSecret لتطبيق Flutter
+        res.status(200).json({
+            success: true,
+            clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id,
+            paymentId: payment._id,
+            amount,
+            currency: currency || "usd"
         });
 
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("❌ Create Payment Intent Error:", err);
+        res.status(500).json({
+            success: false,
+            error: "فشل إنشاء عملية الدفع",
+            details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        });
     }
 };
 
+// ============================================
+// 2️⃣ التحقق من حالة الدفع
+// يتم استدعاؤه بعد نجاح الدفع من Flutter
+// ============================================
+export const verifyPayment = async (req, res) => {
+    try {
+        const { paymentIntentId } = req.body;
 
+        if (!paymentIntentId) {
+            return res.status(400).json({
+                success: false,
+                message: "paymentIntentId مطلوب"
+            });
+        }
 
+        // 🔍 البحث عن عملية دفع في قاعدة البيانات
+        const payment = await Payment.findOne({
+            stripePaymentIntentId: paymentIntentId,
+            userId: req.user._id
+        });
 
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: "عملية الدفع غير موجودة أو غير مصرح بها"
+            });
+        }
 
+        // 📡 الحصول على الحالة الفعلية من Stripe
+        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
+        // 🟢 تحديث الحالة في قاعدة البيانات
+        if (paymentIntent.status === 'succeeded' && payment.status !== 'succeeded') {
+            payment.status = 'succeeded';
+            payment.paidAt = new Date();
+            await payment.save();
+        } else if (paymentIntent.status === 'canceled') {
+            payment.status = 'canceled';
+            await payment.save();
+        } else if (paymentIntent.status === 'requires_payment_method') {
+            payment.status = 'failed';
+            await payment.save();
+        }
+
+        // 🔁 إرسال الحالة إلى Flutter
+        res.status(200).json({
+            success: paymentIntent.status === 'succeeded',
+            status: paymentIntent.status,
+            dbStatus: payment.status,
+            amount: payment.amount,
+            currency: payment.currency,
+            tripPriceId: payment.tripPriceId,
+            paidAt: payment.paidAt,
+            message: paymentIntent.status === 'succeeded'
+                ? "تم الدفع بنجاح"
+                : "الدفع غير مكتمل"
+        });
+
+    } catch (err) {
+        console.error("❌ Verify Payment Error:", err);
+        res.status(500).json({
+            success: false,
+            error: "فشل التحقق من حالة الدفع"
+        });
+    }
+};
+
+// ============================================
+// 3️⃣ Webhook من Stripe
+// يتم استدعاؤه تلقائياً عند حدوث أي تغيير في الدفع
+// ============================================
 export const stripeWebhook = async (req, res) => {
     const sig = req.headers["stripe-signature"];
     let event;
 
     try {
+        // 🛡️ التحقق من صحة التوقيع
         event = stripe.webhooks.constructEvent(
             req.body,
             sig,
             process.env.STRIPE_WEBHOOK_SECRET
         );
     } catch (err) {
+        console.error("⚠️ Webhook signature verification failed:", err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    if (event.type === "payment_intent.succeeded") {
-        const paymentIntent = event.data.object;
+    try {
+        switch (event.type) {
+            case "payment_intent.succeeded":
+                const succeededIntent = event.data.object;
 
-        // تحديث حالة الدفع في قاعدة البيانات
-        await Payment.findOneAndUpdate(
-            { stripePaymentIntentId: paymentIntent.id },
-            { status: "succeeded" }
-        );
+                await Payment.findOneAndUpdate(
+                    { stripePaymentIntentId: succeededIntent.id },
+                    {
+                        status: "succeeded",
+                        paidAt: new Date()
+                    }
+                );
 
-        console.log("✔ تم الدفع بنجاح", {
-            productId: paymentIntent.metadata.productId,
-            userId: paymentIntent.metadata.userId,
-            amount: paymentIntent.amount / 100
-        });
+                console.log("✅ Webhook: Payment succeeded", {
+                    id: succeededIntent.id,
+                    tripPriceId: succeededIntent.metadata.tripPriceId,
+                    userId: succeededIntent.metadata.userId,
+                    amount: succeededIntent.amount / 100
+                });
+
+                break;
+
+            case "payment_intent.payment_failed":
+                const failedIntent = event.data.object;
+
+                await Payment.findOneAndUpdate(
+                    { stripePaymentIntentId: failedIntent.id },
+                    {
+                        status: "failed",
+                        failureReason: failedIntent.last_payment_error?.message
+                    }
+                );
+
+                console.log("❌ Webhook: Payment failed");
+
+                break;
+
+            case "payment_intent.canceled":
+                const canceledIntent = event.data.object;
+
+                await Payment.findOneAndUpdate(
+                    { stripePaymentIntentId: canceledIntent.id },
+                    { status: "canceled" }
+                );
+
+                console.log("⚠️ Webhook: Payment canceled");
+                break;
+        }
+    } catch (dbError) {
+        console.error("❌ Webhook database error:", dbError);
     }
 
-    res.json({ received: true });
+    res.status(200).json({ received: true });
 };
+
+// ============================================
+// 4️⃣ جلب سجل المدفوعات
+// ============================================
+export const getPaymentHistory = async (req, res) => {
+    try {
+        const { page = 1, limit = 10 } = req.query;
+
+        const payments = await Payment.find({ userId: req.user._id })
+            .sort({ createdAt: -1 })
+            .limit(limit * 1)
+            .skip((page - 1) * limit)
+            .select('-__v');
+
+        const count = await Payment.countDocuments({ userId: req.user._id });
+
+        res.status(200).json({
+            success: true,
+            payments,
+            totalPages: Math.ceil(count / limit),
+            currentPage: page,
+            totalPayments: count
+        });
+
+    } catch (err) {
+        console.error("❌ Get Payment History Error:", err);
+        res.status(500).json({
+            success: false,
+            error: "فشل جلب سجل المدفوعات"
+        });
+    }
+};
+
+// ============================================
+// 5️⃣ استرجاع المبلغ Refund
+// ============================================
+export const refundPayment = async (req, res) => {
+    try {
+        const { paymentIntentId, reason } = req.body;
+
+        const payment = await Payment.findOne({
+            stripePaymentIntentId: paymentIntentId,
+            userId: req.user._id,
+            status: 'succeeded'
+        });
+
+        if (!payment) {
+            return res.status(404).json({
+                success: false,
+                message: "عملية الدفع غير موجودة أو لا يمكن استرجاعها"
+            });
+        }
+
+        const refund = await stripe.refunds.create({
+            payment_intent: paymentIntentId,
+            reason: reason || 'requested_by_customer'
+        });
+
+        payment.status = 'refunded';
+        payment.refundedAt = new Date();
+        await payment.save();
+
+        res.status(200).json({
+            success: true,
+            message: "تم استرجاع المبلغ بنجاح",
+            refund: {
+                id: refund.id,
+                amount: refund.amount / 100,
+                status: refund.status
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Refund Error:", err);
+        res.status(500).json({
+            success: false,
+            error: "فشل استرجاع المبلغ"
+        });
+    }
+};
+
 
 
 
