@@ -544,7 +544,7 @@ async function sendNotification(deviceToken, title, body) {
     }
 }
 
-// sendNotification('ftrRnnUPRfKrE41oSTUcz7:APA91bGDa5hYvCiGIM2yRlqIOcq5D_kYpDsueiPrFlJZ5vyHNT9hCKIG7sYVyEf2ZNZsfEHv9kREmzCYSfoeq82fyjl47orndHZFHfSpCLEH29obiHam1-k', 'عنوان الإشعار', 'نص الإشعار هنا');
+// sendNotification('dBzczuhJTeidn1M772cmyk:APA91bE6dSZjW-lbv48Pg-L_zo_baZsEyjMVkbCZW-gNmAbP6H-fCfhAzuO-vgU95rCTEweQz1AfbCDN5zM82tYgdskG-vEIPdr5ByJyJS3OGWmufEvJ2VA', 'عنوان الإشعار', 'نص الإشعار هنا');
 
 export const savetoken = asyncHandelr(async (req, res, next) => {
     const { userId, fcmToken } = req.body;

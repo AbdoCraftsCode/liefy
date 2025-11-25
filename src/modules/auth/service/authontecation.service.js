@@ -19,6 +19,8 @@ import { sendOTP } from "./regestration.service.js";
 import { dliveryModel } from "../../../DB/models/dliveryorder.js";
 import { KiloPriceModel } from "../../../DB/models/kiloPriceSchema.js";
 const AUTHENTICA_OTP_URL = "https://api.authentica.sa/api/v1/send-otp";
+
+import admin from 'firebase-admin';
 // export const login = asyncHandelr(async (req, res, next) => {
 //     const { identifier, password } = req.body; // identifier يمكن أن يكون إيميل أو رقم هاتف
 //     console.log(identifier, password);
@@ -402,6 +404,99 @@ export const login = asyncHandelr(async (req, res, next) => {
 
 
 
+// export const createOrderClient = asyncHandelr(async (req, res, next) => {
+//     const userId = req.user.id;
+//     const {
+//         customerName,
+//         phone,
+//         sourceAddress,
+//         sourceLongitude,
+//         sourceLatitude,
+//         destinationAddress,
+//         destinationLongitude,
+//         destinationLatitude,
+//         orderPrice,
+//         deliveryPrice,
+//         totalPrice,
+//         orderDetails = ""
+//     } = req.body;
+
+//     // ✅ التحقق من وجود المستخدم
+//     const user = await Usermodel.findById(userId);
+//     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+//     // ✅ تجهيز الأرقام لو موجودة فقط
+//     const _orderPrice = orderPrice ? parseFloat(orderPrice) : undefined;
+//     const _deliveryPrice = deliveryPrice ? parseFloat(deliveryPrice) : undefined;
+//     const _totalPrice = totalPrice ? parseFloat(totalPrice) : undefined;
+
+//     // ❗ لو القيمة موجودة لكن مش رقم → رجّع Error منطقي
+//     if (orderPrice && isNaN(_orderPrice)) {
+//         return next(new Error("⚠️ orderPrice يجب أن يكون رقم", { cause: 400 }));
+//     }
+
+//     if (deliveryPrice && isNaN(_deliveryPrice)) {
+//         return next(new Error("⚠️ deliveryPrice يجب أن يكون رقم", { cause: 400 }));
+//     }
+
+//     if (totalPrice && isNaN(_totalPrice)) {
+//         return next(new Error("⚠️ totalPrice يجب أن يكون رقم", { cause: 400 }));
+//     }
+
+//     // ✅ رفع صورة الطلب (إن وجدت)
+//     let uploadedImage = null;
+//     if (req.files?.image?.[0]) {
+//         const file = req.files.image[0];
+//         const uploaded = await cloud.uploader.upload(file.path, { folder: "orders/images" });
+//         uploadedImage = {
+//             secure_url: uploaded.secure_url,
+//             public_id: uploaded.public_id
+//         };
+//     }
+
+//     // ✅ إنشاء الطلب
+//     const newOrder = await dliveryModel.create({
+//         customerName,
+//         phone,
+//         source: {
+//             address: sourceAddress,
+//             location: {
+//                 type: "Point",
+//                 coordinates: [
+//                     parseFloat(sourceLongitude),
+//                     parseFloat(sourceLatitude)
+//                 ]
+//             }
+//         },
+//         destination: {
+//             address: destinationAddress,
+//             location: {
+//                 type: "Point",
+//                 coordinates: [
+//                     parseFloat(destinationLongitude),
+//                     parseFloat(destinationLatitude)
+//                 ]
+//             }
+//         },
+//         orderPrice: _orderPrice,
+//         deliveryPrice: _deliveryPrice,
+//         totalPrice: _totalPrice,
+//         orderDetails: orderDetails.toString(),
+//         image: uploadedImage,
+//         createdBy: userId
+//     });
+
+//     return res.status(201).json({
+//         success: true,
+//         message: "✅ تم إنشاء الطلب بنجاح",
+//         data: newOrder
+//     });
+// });
+
+
+
+
+
 export const createOrderClient = asyncHandelr(async (req, res, next) => {
     const userId = req.user.id;
     const {
@@ -419,29 +514,23 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         orderDetails = ""
     } = req.body;
 
-    // ✅ التحقق من وجود المستخدم
     const user = await Usermodel.findById(userId);
     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
 
-    // ✅ تجهيز الأرقام لو موجودة فقط
     const _orderPrice = orderPrice ? parseFloat(orderPrice) : undefined;
     const _deliveryPrice = deliveryPrice ? parseFloat(deliveryPrice) : undefined;
     const _totalPrice = totalPrice ? parseFloat(totalPrice) : undefined;
 
-    // ❗ لو القيمة موجودة لكن مش رقم → رجّع Error منطقي
     if (orderPrice && isNaN(_orderPrice)) {
         return next(new Error("⚠️ orderPrice يجب أن يكون رقم", { cause: 400 }));
     }
-
     if (deliveryPrice && isNaN(_deliveryPrice)) {
         return next(new Error("⚠️ deliveryPrice يجب أن يكون رقم", { cause: 400 }));
     }
-
     if (totalPrice && isNaN(_totalPrice)) {
         return next(new Error("⚠️ totalPrice يجب أن يكون رقم", { cause: 400 }));
     }
 
-    // ✅ رفع صورة الطلب (إن وجدت)
     let uploadedImage = null;
     if (req.files?.image?.[0]) {
         const file = req.files.image[0];
@@ -452,7 +541,7 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         };
     }
 
-    // ✅ إنشاء الطلب
+    // 🔥 إنشاء الطلب
     const newOrder = await dliveryModel.create({
         customerName,
         phone,
@@ -484,12 +573,56 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         createdBy: userId
     });
 
+    // 🔥🔥 إضافة الإشعارات هنا (نفس الموجود في createOrder بالظبط)
+    // 🔥🔥 إضافة الإشعارات هنا (نفس الموجود في createOrder بالظبط)
+    // 🔥 إرسال إشعارات لجميع ServiceProvider لديهم FCM Token
+    // جلب كل ServiceProvider
+    const serviceProviders = await Usermodel.find({ accountType: "ServiceProvider" }, "fcmToken fullName");
+    console.log("ServiceProviders found:", serviceProviders.length);
+
+    for (const provider of serviceProviders) {
+        const token = provider.fcmToken?.trim();
+        const displayName = provider.fullName || provider._id.toString();
+
+        if (!token) {
+            console.log(`⚠️ تجاهل ${displayName} لتوكن فارغ`);
+            continue;
+        }
+
+        console.log(`🔔 إرسال إشعار لـ ${displayName} مع توكن: ${token}`);
+
+        try {
+            await admin.messaging().send({
+                notification: { title: "🚀 طلب جديد", body: `تم إنشاء طلب جديد من العميل: ${customerName}` },
+                data: { orderId: newOrder._id.toString(), createdAt: newOrder.createdAt.toISOString(), type: "NEW_ORDER" },
+                token: token
+            });
+            console.log(`✅ تم إرسال الإشعار لـ ${displayName}`);
+        } catch (err) {
+            console.error(`❌ فشل إرسال الإشعار للمستخدم ${displayName}:`, err.message);
+        }
+    }
+
+    
+
+
+
+
+
     return res.status(201).json({
         success: true,
         message: "✅ تم إنشاء الطلب بنجاح",
         data: newOrder
     });
 });
+
+
+
+
+
+
+
+
 
 
 
@@ -583,6 +716,7 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
 import Stripe from "stripe";
 import { Payment } from "../../../DB/models/paymentSchema.js";
 import { FavoritePlace } from "../../../DB/models/FavoritePlace.js";
+import { NotificationModell } from "../../../DB/models/notificationSchema.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -1237,29 +1371,28 @@ export const getPendingOrdersForDelivery = asyncHandelr(async (req, res, next) =
     const deliveryLat = deliveryUser.location.coordinates[1];
     const deliveryLon = deliveryUser.location.coordinates[0];
 
-    // ✅ جلب المسافة المسموح بها
-    const config = await KiloPriceModel.findOne();
-    if (!config || !config.distance) return next(new Error("❌ لم يتم تحديد مسافة التوصيل", { cause: 400 }));
-    const maxDistance = config.distance;
-
     // ✅ جلب كل الطلبات في حالة pending
-    const pendingOrders = await dliveryModel.find({ status: "pending" }).sort({ createdAt: 1 });
+    const pendingOrders = await dliveryModel.find({ status: "pending" });
 
-    // ✅ فلترة الطلبات حسب المسافة
-    const nearbyOrders = pendingOrders.filter(order => {
+    // ✅ حساب المسافة لكل طلب
+    const ordersWithDistance = pendingOrders.map(order => {
         const sourceLat = order.source.location.coordinates[1];
         const sourceLon = order.source.location.coordinates[0];
         const distanceToSource = getDistanceFromLatLonInKm(deliveryLat, deliveryLon, sourceLat, sourceLon);
-        return distanceToSource <= maxDistance;
+        return { ...order.toObject(), distanceToSource };
     });
+
+    // ✅ ترتيب الطلبات من الأقرب للأبعد
+    ordersWithDistance.sort((a, b) => a.distanceToSource - b.distanceToSource);
 
     return res.status(200).json({
         success: true,
-        message: "✅ تم جلب الطلبات القريبة بنجاح",
-        count: nearbyOrders.length,
-        data: nearbyOrders
+        message: "✅ تم جلب الطلبات وترتيبها من الأقرب للأبعد",
+        count: ordersWithDistance.length,
+        data: ordersWithDistance
     });
 });
+
 
 
 
