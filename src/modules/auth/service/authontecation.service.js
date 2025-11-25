@@ -947,6 +947,74 @@ export const getMyFavoritePlaces = async (req, res) => {
 
 
 
+export const updateOrderStatusdlivery = async (req, res) => {
+    try {
+        const { action } = req.body;
+        const { orderId } = req.params;
+
+        // التحقق من المستخدم
+        const user = await Usermodel.findById(req.user._id);
+
+        if (!user || user.accountType !== "ServiceProvider") {
+            return res.status(403).json({
+                success: false,
+                message: "غير مسموح — هذا الإجراء متاح لمقدمي الخدمة فقط"
+            });
+        }
+
+        // جلب الطلب
+        const order = await dliveryModel.findById(orderId);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "الطلب غير موجود"
+            });
+        }
+
+        // منع تغيير حالة الطلب لو مكتمل مسبقًا
+        if (order.status === "completed") {
+            return res.status(400).json({
+                success: false,
+                message: "لا يمكن تغيير حالة طلب مكتمل"
+            });
+        }
+
+        // تنفيذ العمليات
+        if (action === "accept") {
+            order.status = "active";
+            order.assignedTo = req.user._id;
+        }
+        else if (action === "reject") {
+            order.status = "cancelled";
+            order.assignedTo = req.user._id;
+        }
+        else {
+            return res.status(400).json({
+                success: false,
+                message: "قيمة action يجب أن تكون accept أو reject"
+            });
+        }
+
+        await order.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "تم تحديث حالة الطلب بنجاح",
+            data: order
+        });
+
+    } catch (err) {
+        console.error("❌ Order Status Update Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء تحديث حالة الطلب"
+        });
+    }
+};
+
+
+
 
 
 
