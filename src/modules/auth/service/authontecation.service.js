@@ -1124,7 +1124,6 @@ export const getMyFavoritePlaces = async (req, res) => {
 
 
 
-
 export const updateOrderStatusdlivery = async (req, res) => {
     try {
         const { action } = req.body;
@@ -1163,9 +1162,11 @@ export const updateOrderStatusdlivery = async (req, res) => {
         let notificationBody = "";
         let notificationType = "";
 
+        // ----------------------------------------------------------------------
+        // ✔️ حالة قبول الطلب
+        // ----------------------------------------------------------------------
         if (action === "accept") {
 
-            // يظل pending لكن subStatus تتغير
             order.status = "pending";
             order.subStatus = "assigned";
             order.assignedTo = req.user._id;
@@ -1174,7 +1175,11 @@ export const updateOrderStatusdlivery = async (req, res) => {
             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} بقبول طلبك وهو في انتظار الدفع.`;
             notificationType = "ORDER_ACCEPTED";
 
-        } else if (action === "reject") {
+        }
+        // ----------------------------------------------------------------------
+        // ✔️ حالة رفض الطلب
+        // ----------------------------------------------------------------------
+        else if (action === "reject") {
 
             order.status = "cancelled";
             order.subStatus = "by_driver";
@@ -1184,17 +1189,67 @@ export const updateOrderStatusdlivery = async (req, res) => {
             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} برفض الطلب.`;
             notificationType = "ORDER_REJECTED";
 
-        } else {
+        }
+
+        // ======================================================================
+        // 🔥 الحالات الجديدة التي طلبتها بالظبط 🔥
+        // ======================================================================
+
+        // 🚗 الديلفري في الطريق لموقع الاستلام
+        else if (action === "going_to_pickup") {
+
+            order.status = "active";
+            order.subStatus = "going_to_pickup";
+
+            notificationTitle = "🚗 جاري التوجه لموقع الاستلام";
+            notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق إلى موقع استلام طلبك.`;
+            notificationType = "GOING_TO_PICKUP";
+        }
+
+        // 📦 تم أخذ الطلب من موقع الاستلام
+        else if (action === "picked") {
+
+            order.status = "active";
+            order.subStatus = "picked";
+
+            notificationTitle = "📦 تم استلام الطلب";
+            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} باستلام الطلب من موقع الاستلام.`;
+            notificationType = "ORDER_PICKED";
+        }
+
+        // 🛣️ الديلفري في الطريق لموقع التسليم
+        else if (action === "going_to_destination") {
+
+            order.status = "active";
+            order.subStatus = "going_to_destination";
+
+            notificationTitle = "🛵 في الطريق لموقع التسليم";
+            notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق لتسليم طلبك.`;
+            notificationType = "GOING_TO_DESTINATION";
+        }
+
+        // 🎉 تم تسليم الطلب
+        else if (action === "delivered") {
+
+            order.status = "completed";
+            order.subStatus = "delivered";
+
+            notificationTitle = "🎉 تم تسليم الطلب بنجاح";
+            notificationBody = `تم تسليم طلبك بواسطة ${user.fullName || ""}. شكرًا لاستخدامك خدمتنا!`;
+            notificationType = "ORDER_DELIVERED";
+        }
+
+        else {
             return res.status(400).json({
                 success: false,
-                message: "قيمة action يجب أن تكون accept أو reject"
+                message: "قيمة action غير صالحة"
             });
         }
 
         await order.save();
 
         // ------------------------------------------------------------------
-        // 🔥 إرسال الإشعار للعميل نفس أسلوب الإشعار السابق
+        // 🔥 إرسال الإشعار للعميل
         // ------------------------------------------------------------------
 
         const client = await Usermodel.findById(order.createdBy);
@@ -1206,7 +1261,7 @@ export const updateOrderStatusdlivery = async (req, res) => {
                 await admin.messaging().send({
                     notification: {
                         title: notificationTitle,
-                        body: notificationBody
+                        body: notificationBody,
                     },
                     data: {
                         orderId: order._id.toString(),
@@ -1241,6 +1296,10 @@ export const updateOrderStatusdlivery = async (req, res) => {
         });
     }
 };
+
+
+
+
 
 
 
