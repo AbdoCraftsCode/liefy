@@ -79,6 +79,24 @@ const OrderSchema = new mongoose.Schema({
         enum: ["pending", "active", "completed", "cancelled"],
         default: "pending"
     },
+
+    subStatus: {
+        type: String,
+        enum: [
+            "waiting",       // pending
+            "has_offers",    // pending
+            "assigned",      // pending
+            "preparing",     // active
+            "going_to_pickup",   // active
+            "picked",        // active
+            "going_to_destination", // active
+            "delivered",     // completed
+            "by_client",     // cancelled
+            "by_driver",     // cancelled
+            "payment_failed" // cancelled
+        ],
+        default: "waiting"
+    },
     orderNumber: {
         type: String,
         unique: true,

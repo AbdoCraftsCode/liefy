@@ -544,6 +544,8 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
     // 🔥 إنشاء الطلب
     const newOrder = await dliveryModel.create({
         customerName,
+        status: "pending",       // الطلب لسه جديد
+        subStatus: "waiting",
         phone,
         source: {
             address: sourceAddress,
@@ -602,19 +604,19 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
             console.error(`❌ فشل إرسال الإشعار للمستخدم ${displayName}:`, err.message);
         }
     }
-
-    
-
-
-
-
-
     return res.status(201).json({
         success: true,
         message: "✅ تم إنشاء الطلب بنجاح",
         data: newOrder
     });
 });
+    
+
+
+
+
+
+
 
 
 
@@ -1148,7 +1150,7 @@ export const updateOrderStatusdlivery = async (req, res) => {
             });
         }
 
-        // منع تغيير حالة الطلب لو مكتمل مسبقًا
+        // الطلب مكتمل؟ ممنوع نغيره
         if (order.status === "completed") {
             return res.status(400).json({
                 success: false,
@@ -1157,15 +1159,32 @@ export const updateOrderStatusdlivery = async (req, res) => {
         }
 
         // تنفيذ العمليات
+        let notificationTitle = "";
+        let notificationBody = "";
+        let notificationType = "";
+
         if (action === "accept") {
-            order.status = "active";
+
+            // يظل pending لكن subStatus تتغير
+            order.status = "pending";
+            order.subStatus = "assigned";
             order.assignedTo = req.user._id;
-        }
-        else if (action === "reject") {
+
+            notificationTitle = "✅ تم قبول عرضك!";
+            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} بقبول طلبك وهو في انتظار الدفع.`;
+            notificationType = "ORDER_ACCEPTED";
+
+        } else if (action === "reject") {
+
             order.status = "cancelled";
+            order.subStatus = "by_driver";
             order.assignedTo = req.user._id;
-        }
-        else {
+
+            notificationTitle = "❌ تم رفض الطلب";
+            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} برفض الطلب.`;
+            notificationType = "ORDER_REJECTED";
+
+        } else {
             return res.status(400).json({
                 success: false,
                 message: "قيمة action يجب أن تكون accept أو reject"
@@ -1173,6 +1192,40 @@ export const updateOrderStatusdlivery = async (req, res) => {
         }
 
         await order.save();
+
+        // ------------------------------------------------------------------
+        // 🔥 إرسال الإشعار للعميل نفس أسلوب الإشعار السابق
+        // ------------------------------------------------------------------
+
+        const client = await Usermodel.findById(order.createdBy);
+
+        if (client && client.fcmToken) {
+            const token = client.fcmToken.trim();
+
+            try {
+                await admin.messaging().send({
+                    notification: {
+                        title: notificationTitle,
+                        body: notificationBody
+                    },
+                    data: {
+                        orderId: order._id.toString(),
+                        providerId: req.user._id.toString(),
+                        type: notificationType
+                    },
+                    token
+                });
+
+                console.log("📨 تم إرسال إشعار تغيير حالة الطلب للعميل");
+
+            } catch (err) {
+                console.error("❌ فشل إرسال إشعار للعميل:", err.message);
+            }
+        } else {
+            console.log("⚠️ العميل ليس لديه FCM Token");
+        }
+
+        // ------------------------------------------------------------------
 
         return res.status(200).json({
             success: true,
@@ -1188,6 +1241,8 @@ export const updateOrderStatusdlivery = async (req, res) => {
         });
     }
 };
+
+
 
 
 export const createNegotiation = async (req, res) => {
@@ -1219,11 +1274,11 @@ export const createNegotiation = async (req, res) => {
             });
         }
 
-        // يمكن التفاوض فقط إذا الطلب pending أو active
-        if (!["pending", "active"].includes(order.status)) {
+        // ❌ التفاوض فقط لو الطلب pending
+        if (order.status !== "pending") {
             return res.status(400).json({
                 success: false,
-                message: "لا يمكن التفاوض على هذا الطلب الآن"
+                message: "لا يمكن التفاوض إلا على الطلبات في الانتظار"
             });
         }
 
@@ -1234,9 +1289,48 @@ export const createNegotiation = async (req, res) => {
             message: message || ""
         });
 
+        // تحديث subStatus
+        order.subStatus = "has_offers";
+
         await order.save();
 
-        res.status(201).json({
+
+        // ------------------------------------------------------------------
+        // 🔥🔥 إرسال إشعار للعميل صاحب الطلب عند وصول عرض جديد
+        // ------------------------------------------------------------------
+
+        const client = await Usermodel.findById(order.createdBy);
+
+        if (client && client.fcmToken) {
+            const token = client.fcmToken.trim();
+
+            try {
+                await admin.messaging().send({
+                    notification: {
+                        title: "📩 عرض جديد على طلبك!",
+                        body: `قام مقدم خدمة بتقديم عرض جديد بسعر ${newDeliveryPrice} جنيه`
+                    },
+                    data: {
+                        orderId: order._id.toString(),
+                        providerId: req.user._id.toString(),
+                        newDeliveryPrice: newDeliveryPrice.toString(),
+                        type: "NEW_NEGOTIATION"
+                    },
+                    token
+                });
+
+                console.log("✅ تم إرسال إشعار العرض للعميل");
+            } catch (err) {
+                console.error("❌ فشل إرسال إشعار للعميل:", err.message);
+            }
+        } else {
+            console.log("⚠️ العميل ليس لديه FCM Token");
+        }
+
+        // ------------------------------------------------------------------
+
+
+        return res.status(201).json({
             success: true,
             message: "تم إضافة التفاوض بنجاح",
             data: order.negotiations[order.negotiations.length - 1]
@@ -1394,6 +1488,116 @@ export const getPendingOrdersForDelivery = asyncHandelr(async (req, res, next) =
 });
 
 
+
+
+
+
+export const acceptNegotiationByClient = async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { negotiationId, providerId } = req.body; // مرن: استخدم negotiationId أو providerId أو آخر negotiation
+
+        // جلب الطلب
+        const order = await dliveryModel.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ success: false, message: "الطلب غير موجود" });
+        }
+
+        // التحقق إن الي بيبعت هو صاحب الطلب
+        if (order.createdBy.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ success: false, message: "غير مصرح — فقط صاحب الطلب يقدر يقبل العرض" });
+        }
+
+        // لازم الطلب يكون في pending
+        if (order.status !== "pending") {
+            return res.status(400).json({ success: false, message: "لا يمكن قبول عرض على طلب غير في حالة pending" });
+        }
+
+        // لازم يكون فيه عروض أصلاً
+        if (!order.negotiations || !order.negotiations.length) {
+            return res.status(400).json({ success: false, message: "لا يوجد عروض لهذا الطلب" });
+        }
+
+        // تحديد الـ negotiation المراد قبوله
+        let chosenNegotiation = null;
+
+        if (negotiationId) {
+            chosenNegotiation = order.negotiations.find(n => n._id.toString() === negotiationId.toString());
+        } else if (providerId) {
+            chosenNegotiation = order.negotiations.find(n => n.offeredBy.toString() === providerId.toString());
+        } else {
+            // لو مفيش حاجة اتبعتت نأخذ آخر عرض
+            chosenNegotiation = order.negotiations[order.negotiations.length - 1];
+        }
+
+        if (!chosenNegotiation) {
+            return res.status(400).json({ success: false, message: "العرض المحدد غير موجود" });
+        }
+
+        // تعيين السائق (offeredBy) كـ assignedTo
+        order.assignedTo = chosenNegotiation.offeredBy;
+        order.subStatus = "assigned";
+        order.status = "pending"; // يبقى في الانتظار للحظة الدفع إن كان مطلوب
+
+        await order.save();
+
+        // إرسال إشعار إلى السائق المعين (assignedTo)
+        const driver = await Usermodel.findById(order.assignedTo);
+        if (driver) {
+            const token = driver.fcmToken?.trim();
+            const displayName = driver.fullName || driver._id.toString();
+
+            if (token) {
+                try {
+                    await admin.messaging().send({
+                        notification: {
+                            title: "✅ تم قبول عرضك",
+                            body: `تم قبول عرضك للطلب رقم ${order.orderNumber || order._id}. السعر: ${chosenNegotiation.newDeliveryPrice}`
+                        },
+                        data: {
+                            orderId: order._id.toString(),
+                            negotiationId: chosenNegotiation._id.toString(),
+                            type: "OFFER_ACCEPTED",
+                            newDeliveryPrice: chosenNegotiation.newDeliveryPrice?.toString() || ""
+                        },
+                        token
+                    });
+
+                    // حفظ الإشعار في الـ DB
+                    await NotificationModell.create({
+                        user: driver._id,
+                        order: order._id,
+                        title: "✅ تم قبول عرضك",
+                        body: `تم قبول عرضك للطلب ${order.orderNumber || order._id}`,
+                        deviceToken: token,
+                        type: "OFFER_ACCEPTED"
+                    });
+
+                    console.log(`✅ أُرسل إشعار قبول العرض إلى ${displayName}`);
+                } catch (err) {
+                    console.error(`❌ فشل إرسال إشعار للسائق ${displayName}:`, err.message || err);
+                }
+            } else {
+                console.log(`⚠️ السائق ${displayName} ليس لديه FCM token صالح`);
+            }
+        } else {
+            console.log("⚠️ السائق المعين غير موجود في قاعدة البيانات");
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "تم قبول العرض وتعيين السائق بنجاح",
+            data: { orderId: order._id, assignedTo: order.assignedTo, subStatus: order.subStatus }
+        });
+
+    } catch (err) {
+        console.error("❌ Accept Negotiation Error:", err);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء قبول العرض"
+        });
+    }
+};
 
 
 export const createKiloPrice = asyncHandelr(async (req, res, next) => {
