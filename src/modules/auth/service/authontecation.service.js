@@ -723,6 +723,7 @@ import Stripe from "stripe";
 import { Payment } from "../../../DB/models/paymentSchema.js";
 import { FavoritePlace } from "../../../DB/models/FavoritePlace.js";
 import { NotificationModell } from "../../../DB/models/notificationSchema.js";
+import { Complaint } from "../../../DB/models/complaintSchema.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -1825,6 +1826,79 @@ export const cancelOrder = async (req, res, next) => {
 };
 
 
+
+export const getDeliveryHistory = async (req, res) => {
+    try {
+        const userId = req.user._id; // جاء من التوكن
+        const { status } = req.query; // cancelled OR completed
+
+        // لو مفيش status نبعت Error
+        if (!status || !["cancelled", "completed"].includes(status)) {
+            return res.status(400).json({
+                message: "Invalid or missing status. Use ?status=cancelled OR ?status=completed"
+            });
+        }
+
+        let filter = {
+            assignedTo: userId,
+            status: status
+        };
+
+        // === cancelled ONLY: return cancellation reason/details ===
+        let projection = {};
+
+        if (status === "cancelled") {
+            projection = {
+                customerName: 1,
+                phone: 1,
+                source: 1,
+                destination: 1,
+                deliveryPrice: 1,
+                totalPrice: 1,
+                orderNumber: 1,
+                createdAt: 1,
+                status: 1,
+                subStatus: 1,
+                "cancellation.reason": 1,
+                "cancellation.canceledBy": 1,
+                "cancellation.date": 1
+            };
+        }
+
+        if (status === "completed") {
+            projection = {
+                customerName: 1,
+                phone: 1,
+                source: 1,
+                destination: 1,
+                deliveryPrice: 1,
+                totalPrice: 1,
+                orderNumber: 1,
+                createdAt: 1,
+                status: 1,
+                subStatus: 1
+            };
+        }
+
+        const orders = await dliveryModel
+            .find(filter, projection)
+            .populate("cancellation.canceledBy", "name phone") // لو عايز بيانات اللي لغى
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            count: orders.length,
+            orders
+        });
+
+    } catch (error) {
+        console.error("Error in getDeliveryHistory:", error);
+        return res.status(500).json({ message: "Server error" });
+    }
+};
+
+
+
+
 export const getMyInfo = async (req, res, next) => {
     try {
         const userId = req.user.id; // ✅ جاي من التوكن بعد الـ auth()
@@ -1857,6 +1931,41 @@ export const getMyInfo = async (req, res, next) => {
         });
     }
 };
+
+export const createComplaint = async (req, res) => {
+    try {
+        const { fullName, phone, message } = req.body;
+
+        if (!fullName || !phone || !message) {
+            return res.status(400).json({
+                success: false,
+                message: "الاسم ورقم الهاتف ومحتوى الشكوى مطلوبين"
+            });
+        }
+
+        const complaint = await Complaint.create({
+            fullName,
+            phone,
+            message,
+            userId: req.user ? req.user.id : null
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "تم إرسال الشكوى بنجاح",
+            data: complaint
+        });
+
+    } catch (err) {
+        console.error("❌ Create Complaint Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء إرسال الشكوى"
+        });
+    }
+};
+
+
 
 
 export const getMyActiveOrdersForDelivery = asyncHandelr(async (req, res, next) => {
