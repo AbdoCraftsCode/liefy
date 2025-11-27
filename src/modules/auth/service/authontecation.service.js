@@ -510,7 +510,7 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         destinationLatitude,
         orderPrice,
         deliveryPrice,
-        totalPrice,
+        totalPrice, // <<< هيفضل موجود بس هنحسب الديناميكي ونستخدمه
         orderDetails = ""
     } = req.body;
 
@@ -519,7 +519,7 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
 
     const _orderPrice = orderPrice ? parseFloat(orderPrice) : undefined;
     const _deliveryPrice = deliveryPrice ? parseFloat(deliveryPrice) : undefined;
-    const _totalPrice = totalPrice ? parseFloat(totalPrice) : undefined;
+    let _totalPrice = totalPrice ? parseFloat(totalPrice) : undefined;
 
     if (orderPrice && isNaN(_orderPrice)) {
         return next(new Error("⚠️ orderPrice يجب أن يكون رقم", { cause: 400 }));
@@ -529,6 +529,11 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
     }
     if (totalPrice && isNaN(_totalPrice)) {
         return next(new Error("⚠️ totalPrice يجب أن يكون رقم", { cause: 400 }));
+    }
+
+    // 🔥🔥 حساب totalPrice ديناميكياً
+    if (_orderPrice !== undefined && _deliveryPrice !== undefined) {
+        _totalPrice = _orderPrice + _deliveryPrice;
     }
 
     let uploadedImage = null;
@@ -569,16 +574,13 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         },
         orderPrice: _orderPrice,
         deliveryPrice: _deliveryPrice,
-        totalPrice: _totalPrice,
+        totalPrice: _totalPrice, // 👈 تخزين السعر الديناميكي هنا
         orderDetails: orderDetails.toString(),
         image: uploadedImage,
         createdBy: userId
     });
 
     // 🔥🔥 إضافة الإشعارات هنا (نفس الموجود في createOrder بالظبط)
-    // 🔥🔥 إضافة الإشعارات هنا (نفس الموجود في createOrder بالظبط)
-    // 🔥 إرسال إشعارات لجميع ServiceProvider لديهم FCM Token
-    // جلب كل ServiceProvider
     const serviceProviders = await Usermodel.find({ accountType: "ServiceProvider" }, "fcmToken fullName");
     console.log("ServiceProviders found:", serviceProviders.length);
 
@@ -604,12 +606,14 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
             console.error(`❌ فشل إرسال الإشعار للمستخدم ${displayName}:`, err.message);
         }
     }
+
     return res.status(201).json({
         success: true,
         message: "✅ تم إنشاء الطلب بنجاح",
         data: newOrder
     });
 });
+
     
 
 
