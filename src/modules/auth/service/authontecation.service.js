@@ -1680,36 +1680,76 @@ export const getMycompletedOrders = asyncHandelr(async (req, res, next) => {
 
 
 
-
 export const getMyactiveOrders = asyncHandelr(async (req, res, next) => {
-    const userId = req.user.id; // ✅ جلب userId من التوكن
+    const userId = req.user.id; // جلب userId من التوكن
 
-    // ✅ التحقق من وجود المستخدم
+    // التحقق من المستخدم
     const user = await Usermodel.findById(userId);
     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
 
-    // ✅ جلب الطلبات اللي حالتها "pending"
-    const myPendingOrders = await dliveryModel.find({
+    // ⭐ جلب الطلبات اللي حالتها active + populate زي pending
+    const myActiveOrders = await dliveryModel.find({
         createdBy: userId,
         status: "active"
-    }).sort({ createdAt: -1 });
+    })
+        .populate({
+            path: "negotiations.offeredBy",
+            select: "fullName phone"
+        })
+        .populate({
+            path: "assignedTo",
+            select: "fullName phone profileImage"
+        })
+        .sort({ createdAt: -1 });
 
-    if (!myPendingOrders.length) {
+    if (!myActiveOrders.length) {
         return res.status(200).json({
             success: true,
-            message: "ℹ️ لا توجد طلبات في الانتظار",
+            message: "ℹ️ لا توجد طلبات نشطة",
             data: []
         });
     }
 
-    // ✅ إرجاع الطلبات
+    // ⭐ دمج بيانات التفاوض + assignedTo بنفس طريقة pending
+    const formattedOrders = myActiveOrders.map(order => {
+        const newNegotiations = order.negotiations.map(n => ({
+            _id: n._id,
+            newDeliveryPrice: n.newDeliveryPrice,
+            message: n.message,
+            createdAt: n.createdAt,
+            offeredBy: n.offeredBy?._id,
+            offeredByName: n.offeredBy?.fullName || null,
+            offeredByPhone: n.offeredBy?.phone || null
+        }));
+
+        // ⭐ assignedTo data
+        let assignedToData = null;
+        if (order.assignedTo) {
+            assignedToData = {
+                id: order.assignedTo._id,
+                name: order.assignedTo.fullName,
+                profileImage: order.assignedTo.profileImage || null,
+                phone: order.assignedTo.phone || null
+            };
+        }
+
+        return {
+            ...order.toObject(),
+            negotiations: newNegotiations,
+            assignedTo: assignedToData
+        };
+    });
+
     return res.status(200).json({
         success: true,
-        message: "✅ تم جلب الطلبات في الانتظار بنجاح",
-        count: myPendingOrders.length,
-        data: myPendingOrders
+        message: "✅ تم جلب الطلبات النشطة بنجاح",
+        count: formattedOrders.length,
+        data: formattedOrders
     });
 });
+
+
+
 
 
 
