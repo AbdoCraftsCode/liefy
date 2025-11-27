@@ -1825,6 +1825,40 @@ export const cancelOrder = async (req, res, next) => {
 };
 
 
+export const getMyInfo = async (req, res, next) => {
+    try {
+        const userId = req.user.id; // ✅ جاي من التوكن بعد الـ auth()
+
+        const user = await Usermodel.findById(userId).select("fullName phone profileImage");
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "❌ المستخدم غير موجود"
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "✅ تم جلب بيانات المستخدم",
+            data: {
+                id: user._id,
+                name: user.fullName,
+                phone: user.phone,
+                profileImage: user.profileImage || null
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ getMyInfo Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب البيانات"
+        });
+    }
+};
+
+
 export const getMyActiveOrdersForDelivery = asyncHandelr(async (req, res, next) => {
     const userId = req.user.id; // ✅ جلب userId من التوكن
 
