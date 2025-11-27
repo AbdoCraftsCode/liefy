@@ -1751,6 +1751,78 @@ export const getMyactiveOrders = asyncHandelr(async (req, res, next) => {
 
 
 
+export const cancelOrder = async (req, res, next) => {
+    try {
+        const { orderId } = req.params;
+        const { reason } = req.body;
+        const userId = req.user.id;
+
+        // 🔍 التأكد من وجود الطلب
+        const order = await dliveryModel.findById(orderId);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "❌ الطلب غير موجود"
+            });
+        }
+
+        // 🔒 تحقق أن المستخدم هو صاحب الطلب أو الدليفري المعين
+        if (order.createdBy.toString() !== userId &&
+            order.assignedTo?.toString() !== userId) {
+            return res.status(403).json({
+                success: false,
+                message: "❌ غير مصرح لك بإلغاء هذا الطلب"
+            });
+        }
+
+        // 🔄 لو الطلب بالفعل ملغي
+        if (order.status === "cancelled") {
+            return res.status(400).json({
+                success: false,
+                message: "ℹ️ الطلب ملغي مسبقًا"
+            });
+        }
+
+        // تحديد من قام بالإلغاء
+        let subStatus = "";
+        if (order.createdBy.toString() === userId) {
+            subStatus = "by_client";
+        } else if (order.assignedTo?.toString() === userId) {
+            subStatus = "by_driver";
+        }
+
+        // 🟢 تحديث بيانات الإلغاء
+        order.status = "cancelled";
+        order.subStatus = subStatus;
+        order.cancellation = {
+            isCanceled: true,
+            canceledBy: userId,
+            reason: reason || "",
+            date: new Date()
+        };
+
+        await order.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "✅ تم إلغاء الطلب بنجاح",
+            data: {
+                id: order._id,
+                status: order.status,
+                subStatus: order.subStatus,
+                cancellation: order.cancellation
+            }
+        });
+
+    } catch (err) {
+        console.error("❌ Cancel Order Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "فشل إلغاء الطلب"
+        });
+    }
+};
 
 
 export const getMyActiveOrdersForDelivery = asyncHandelr(async (req, res, next) => {

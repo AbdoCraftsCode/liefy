@@ -97,6 +97,28 @@ const OrderSchema = new mongoose.Schema({
         ],
         default: "waiting"
     },
+
+
+    cancellation: {
+        isCanceled: {
+            type: Boolean,
+            default: false
+        },
+        canceledBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
+        reason: {
+            type: String,
+            default: ""
+        },
+        date: {
+            type: Date,
+            default: null
+        }
+    },
+
     orderNumber: {
         type: String,
         unique: true,
