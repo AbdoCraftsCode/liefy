@@ -7,7 +7,9 @@ const paymentSchema = new mongoose.Schema({
         required: true
     },
     tripPriceId: {
-        type: String, // أو ObjectId لو عندك منتجات مخزنة في قاعدة بيانات
+        type: String,
+        ref: "dlivery",
+        // أو ObjectId لو عندك منتجات مخزنة في قاعدة بيانات
         required: true
     },
     amount: {

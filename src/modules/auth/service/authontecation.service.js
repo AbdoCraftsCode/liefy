@@ -879,6 +879,70 @@ export const stripeWebhook = async (req, res) => {
 // 2️⃣ التحقق من حالة الدفع
 // يتم استدعاؤه بعد نجاح الدفع من Flutter
 // ============================================
+// export const verifyPayment = async (req, res) => {
+//     try {
+//         const { paymentIntentId } = req.body;
+
+//         if (!paymentIntentId) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "paymentIntentId مطلوب"
+//             });
+//         }
+
+//         // 🔍 البحث عن عملية دفع في قاعدة البيانات
+//         const payment = await Payment.findOne({
+//             stripePaymentIntentId: paymentIntentId,
+//             userId: req.user._id
+//         });
+
+//         if (!payment) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "عملية الدفع غير موجودة أو غير مصرح بها"
+//             });
+//         }
+
+//         // 📡 الحصول على الحالة الفعلية من Stripe
+//         const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+//         // 🟢 تحديث الحالة في قاعدة البيانات
+//         if (paymentIntent.status === 'succeeded' && payment.status !== 'succeeded') {
+//             payment.status = 'succeeded';
+//             payment.paidAt = new Date();
+//             await payment.save();
+//         } else if (paymentIntent.status === 'canceled') {
+//             payment.status = 'canceled';
+//             await payment.save();
+//         } else if (paymentIntent.status === 'requires_payment_method') {
+//             payment.status = 'failed';
+//             await payment.save();
+//         }
+
+//         // 🔁 إرسال الحالة إلى Flutter
+//         res.status(200).json({
+//             success: paymentIntent.status === 'succeeded',
+//             status: paymentIntent.status,
+//             dbStatus: payment.status,
+//             amount: payment.amount,
+//             currency: payment.currency,
+//             tripPriceId: payment.tripPriceId,
+//             paidAt: payment.paidAt,
+//             message: paymentIntent.status === 'succeeded'
+//                 ? "تم الدفع بنجاح"
+//                 : "الدفع غير مكتمل"
+//         });
+
+//     } catch (err) {
+//         console.error("❌ Verify Payment Error:", err);
+//         res.status(500).json({
+//             success: false,
+//             error: "فشل التحقق من حالة الدفع"
+//         });
+//     }
+// };
+
+
 export const verifyPayment = async (req, res) => {
     try {
         const { paymentIntentId } = req.body;
@@ -911,6 +975,19 @@ export const verifyPayment = async (req, res) => {
             payment.status = 'succeeded';
             payment.paidAt = new Date();
             await payment.save();
+
+            // ---------------------------------------------------
+            // 🟢 تحديث الطلب ليصبح active + preparing بعد الدفع
+            // ---------------------------------------------------
+            await dliveryModel.findByIdAndUpdate(
+                payment.tripPriceId,
+                {
+                    status: "active",
+                    subStatus: "preparing"
+                }
+            );
+            // ---------------------------------------------------
+
         } else if (paymentIntent.status === 'canceled') {
             payment.status = 'canceled';
             await payment.save();
@@ -941,6 +1018,7 @@ export const verifyPayment = async (req, res) => {
         });
     }
 };
+
 
 
 
