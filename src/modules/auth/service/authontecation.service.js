@@ -1492,6 +1492,59 @@ export const createNegotiation = async (req, res) => {
 
 
 
+// export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
+//     const userId = req.user.id;
+
+//     // التحقق من المستخدم
+//     const user = await Usermodel.findById(userId);
+//     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
+
+//     // ⭐ إضافة populate لجلب اسم ورقم مقدم العرض
+//     const myPendingOrders = await dliveryModel.find({
+//         createdBy: userId,
+//         status: "pending"
+//     })
+//         .populate({
+//             path: "negotiations.offeredBy",
+//             select: "fullName phone"
+//         })
+//         .sort({ createdAt: -1 });
+
+//     if (!myPendingOrders.length) {
+//         return res.status(200).json({
+//             success: true,
+//             message: "ℹ️ لا توجد طلبات في الانتظار",
+//             data: []
+//         });
+//     }
+
+//     // ⭐ دمج بيانات مقدم العرض في كل negotiation
+//     const formattedOrders = myPendingOrders.map(order => {
+//         const newNegotiations = order.negotiations.map(n => ({
+//             _id: n._id,
+//             newDeliveryPrice: n.newDeliveryPrice,
+//             message: n.message,
+//             createdAt: n.createdAt,
+//             offeredBy: n.offeredBy?._id,
+//             offeredByName: n.offeredBy?.fullName || null,
+//             offeredByPhone: n.offeredBy?.phone || null
+//         }));
+
+//         return {
+//             ...order.toObject(),
+//             negotiations: newNegotiations
+//         };
+//     });
+
+//     return res.status(200).json({
+//         success: true,
+//         message: "✅ تم جلب الطلبات في الانتظار بنجاح",
+//         count: formattedOrders.length,
+//         data: formattedOrders
+//     });
+// });
+
+
 export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
     const userId = req.user.id;
 
@@ -1499,7 +1552,7 @@ export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
     const user = await Usermodel.findById(userId);
     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
 
-    // ⭐ إضافة populate لجلب اسم ورقم مقدم العرض
+    // ⭐ إضافة populate لجلب اسم ورقم مقدم العرض + assignedTo
     const myPendingOrders = await dliveryModel.find({
         createdBy: userId,
         status: "pending"
@@ -1507,6 +1560,10 @@ export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
         .populate({
             path: "negotiations.offeredBy",
             select: "fullName phone"
+        })
+        .populate({
+            path: "assignedTo",
+            select: "fullName phone profileImage"
         })
         .sort({ createdAt: -1 });
 
@@ -1530,9 +1587,21 @@ export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
             offeredByPhone: n.offeredBy?.phone || null
         }));
 
+        // ⭐ لو في assignedTo رجّعه بالشكل المطلوب
+        let assignedToData = null;
+        if (order.assignedTo) {
+            assignedToData = {
+                id: order.assignedTo._id,
+                name: order.assignedTo.fullName,
+                profileImage: order.assignedTo.profileImage || null,
+                phone: order.assignedTo.phone || null
+            };
+        }
+
         return {
             ...order.toObject(),
-            negotiations: newNegotiations
+            negotiations: newNegotiations,
+            assignedTo: assignedToData   // هنا النتيجة اللي أنت طلبتها
         };
     });
 
@@ -1543,8 +1612,6 @@ export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
         data: formattedOrders
     });
 });
-
-
 
 
 
@@ -1777,6 +1844,8 @@ export const getPendingOrdersForDelivery = asyncHandelr(async (req, res, next) =
     });
 });
 ;
+
+
 
 
 
