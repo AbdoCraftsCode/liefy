@@ -724,6 +724,7 @@ import { Payment } from "../../../DB/models/paymentSchema.js";
 import { FavoritePlace } from "../../../DB/models/FavoritePlace.js";
 import { NotificationModell } from "../../../DB/models/notificationSchema.js";
 import { Complaint } from "../../../DB/models/complaintSchema.js";
+import { Withdraw } from "../../../DB/models/withdrawSchema.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -731,6 +732,74 @@ const stripe = new Stripe(process.env.STRIPE_SECRET);
 // 1️⃣ إنشاء Payment Intent
 // يتم استدعاؤه من تطبيق Flutter لبدء عملية الدفع
 // ============================================
+// export const createPaymentIntent = async (req, res) => {
+//     try {
+//         const { tripPriceId, amount, currency } = req.body;
+
+//         // 🛑 التحقق من المدخلات
+//         if (!amount || !tripPriceId) {
+//             return res.status(400).json({
+//                 message: "amount و tripPriceId مطلوبين"
+//             });
+//         }
+
+//         if (amount <= 0) {
+//             return res.status(400).json({
+//                 message: "المبلغ يجب أن يكون أكبر من صفر"
+//             });
+//         }
+
+//         if (!req.user?._id) {
+//             return res.status(401).json({
+//                 message: "غير مصرح - يجب تسجيل الدخول"
+//             });
+//         }
+
+//         // ⚡ إنشاء Payment Intent على Stripe
+//         const paymentIntent = await stripe.paymentIntents.create({
+//             amount: Math.round(amount * 100), // التحويل إلى أصغر وحدة (سنت)
+//             currency: currency || "usd",
+//             metadata: {
+//                 tripPriceId,
+//                 userId: req.user._id.toString(),
+//             },
+//             automatic_payment_methods: { enabled: true },
+//         });
+
+//         // 💾 تخزين عملية الدفع في قاعدة البيانات
+//         const payment = await Payment.create({
+//             userId: req.user._id,
+//             tripPriceId,
+//             amount,
+//             currency: currency || "usd",
+//             status: "pending",
+//             stripePaymentIntentId: paymentIntent.id,
+//             createdAt: new Date()
+//         });
+
+//         // 🔁 إعادة clientSecret لتطبيق Flutter
+//         res.status(200).json({
+//             success: true,
+//             clientSecret: paymentIntent.client_secret,
+//             paymentIntentId: paymentIntent.id,
+//             paymentId: payment._id,
+//             amount,
+//             currency: currency || "usd"
+//         });
+
+//     } catch (err) {
+//         console.error("❌ Create Payment Intent Error:", err);
+//         res.status(500).json({
+//             success: false,
+//             error: "فشل إنشاء عملية الدفع",
+//             details: process.env.NODE_ENV === 'development' ? err.message : undefined
+//         });
+//     }
+// };
+
+
+
+
 export const createPaymentIntent = async (req, res) => {
     try {
         const { tripPriceId, amount, currency } = req.body;
@@ -754,6 +823,18 @@ export const createPaymentIntent = async (req, res) => {
             });
         }
 
+        // 🆕 1) جلب الطلب من قاعدة البيانات
+        const order = await dliveryModel.findById(tripPriceId);   // NEW
+        if (!order) {
+            return res.status(404).json({ message: "الطلب غير موجود" });
+        }
+
+        // 🆕 2) حساب الفرق بين deliveryPrice والمبلغ المدفوع
+        const paidDeliveryAmount = Math.min(amount, order.deliveryPrice);
+
+        // الفرق بين المبلغ اللي دفعه العميل وسعر الدليفري
+        const deliveryRemaining = amount - paidDeliveryAmount;                      // NEW
+
         // ⚡ إنشاء Payment Intent على Stripe
         const paymentIntent = await stripe.paymentIntents.create({
             amount: Math.round(amount * 100), // التحويل إلى أصغر وحدة (سنت)
@@ -773,7 +854,11 @@ export const createPaymentIntent = async (req, res) => {
             currency: currency || "usd",
             status: "pending",
             stripePaymentIntentId: paymentIntent.id,
-            createdAt: new Date()
+            createdAt: new Date(),
+
+            // 🆕 الحقول الجديدة
+            deliveryRemaining,      // NEW
+            paidDeliveryAmount      // NEW
         });
 
         // 🔁 إعادة clientSecret لتطبيق Flutter
@@ -783,7 +868,11 @@ export const createPaymentIntent = async (req, res) => {
             paymentIntentId: paymentIntent.id,
             paymentId: payment._id,
             amount,
-            currency: currency || "usd"
+            currency: currency || "usd",
+
+            // 🆕 للإظهار فقط
+            deliveryRemaining,
+            paidDeliveryAmount
         });
 
     } catch (err) {
@@ -795,6 +884,11 @@ export const createPaymentIntent = async (req, res) => {
         });
     }
 };
+
+
+
+
+
 
 
 
@@ -1102,6 +1196,187 @@ export const refundPayment = async (req, res) => {
         });
     }
 };
+
+
+
+export const getDriverPaymentsSummary = async (req, res) => {
+    try {
+        if (!req.user?._id) {
+            return res.status(401).json({ message: "غير مصرح - يجب تسجيل الدخول" });
+        }
+
+        const driverId = req.user._id;
+
+        // 1) الطلبات المكتملة اللي تخص المندوب
+        const completedOrders = await dliveryModel.find({
+            assignedTo: driverId,
+            status: "completed"
+        }).populate("createdBy", "fullName phone profileImage"); // ← بيانات صاحب الطلب
+
+        if (!completedOrders.length) {
+            return res.status(200).json({
+                success: true,
+                totalAmount: 0,
+                totalDeliveryRemaining: 0,
+                totalPaidDeliveryAmount: 0,
+                payments: []
+            });
+        }
+
+        const orderIds = completedOrders.map(o => o._id.toString());
+
+        // 2) كل المدفوعات المكتملة
+        const succeededPayments = await Payment.find({
+            tripPriceId: { $in: orderIds },
+            status: "succeeded"
+        });
+
+        // 3) حساب المجاميع
+        const totalAmount = succeededPayments.reduce((a, p) => a + p.amount, 0);
+        const totalDeliveryRemaining = succeededPayments.reduce((a, p) => a + p.deliveryRemaining, 0);
+        const totalPaidDeliveryAmount = succeededPayments.reduce((a, p) => a + p.paidDeliveryAmount, 0);
+
+        // 4) دمج بيانات الطلب + بيانات صاحب الطلب
+        const finalPayments = succeededPayments.map(payment => {
+            const order = completedOrders.find(
+                o => o._id.toString() === payment.tripPriceId.toString()
+            );
+
+            return {
+                payment,  // بيانات الدفع نفسها
+                order,    // بيانات الطلب كاملة بدون أي نقصان
+                customer: order?.createdBy
+                    ? {
+                        id: order.createdBy._id,
+                        name: order.createdBy.fullName,
+                        phone: order.createdBy.phone,
+                        profileImage: order.createdBy.profileImage || null
+                    }
+                    : null
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            totalAmount,
+            totalDeliveryRemaining,
+            totalPaidDeliveryAmount,
+            payments: finalPayments
+        });
+
+    } catch (error) {
+        console.error("❌ Error fetching payment summary:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب البيانات",
+            error: error.message
+        });
+    }
+};
+
+
+export const getAllWithdrawRequests = async (req, res) => {
+    try {
+        const withdraws = await Withdraw.find()
+            .populate("driverId", "fullName phone email") // بيانات السائق
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            count: withdraws.length,
+            withdraws
+        });
+
+    } catch (error) {
+        console.error("❌ Get All Withdraws Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب كل عمليات السحب",
+            error: error.message
+        });
+    }
+};
+
+
+export const getMyPendingWithdrawRequests = async (req, res) => {
+    try {
+        if (!req.user?._id) {
+            return res.status(401).json({
+                success: false,
+                message: "غير مصرح - يجب تسجيل الدخول"
+            });
+        }
+
+        // جلب السحب اللي حالتها pending فقط
+        const withdraws = await Withdraw.find({
+            driverId: req.user._id,
+            status: "pending"
+        }).sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            count: withdraws.length,
+            withdraws
+        });
+
+    } catch (error) {
+        console.error("❌ Get My Pending Withdraws Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب طلبات السحب المعلقة",
+            error: error.message
+        });
+    }
+};
+
+
+
+export const createWithdrawRequest = async (req, res) => {
+    try {
+        if (!req.user?._id) {
+            return res.status(401).json({
+                success: false,
+                message: "غير مصرح - يجب تسجيل الدخول"
+            });
+        }
+
+        const { amount, phone, serviceName, fullName, accountNumber, accountName } = req.body;
+
+        if (!amount || !phone || !serviceName || !fullName || !accountNumber || !accountName) {
+            return res.status(400).json({
+                success: false,
+                message: "جميع الحقول مطلوبة"
+            });
+        }
+
+        const withdraw = await Withdraw.create({
+            driverId: req.user._id,
+            amount,
+            phone,
+            serviceName,
+            fullName,
+            accountNumber,
+            accountName,
+            createdBy: null // الادمن لسه ما وافقش
+        });
+
+        return res.status(201).json({
+            success: true,
+            message: "تم إنشاء طلب السحب بنجاح",
+            withdraw
+        });
+
+    } catch (error) {
+        console.error("❌ Withdraw Create Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء إنشاء طلب السحب",
+            error: error.message
+        });
+    }
+};
+
+
 
 
 
