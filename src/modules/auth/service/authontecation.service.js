@@ -964,7 +964,7 @@ export const verifyPayment = async (req, res) => {
         if (!payment) {
             return res.status(404).json({
                 success: false,
-                message: "عملية الدفع غير موجودة أو غير مصرح بها"
+                message: "عملية الدفع غير موجودة أو غير مصرح بها ياعم"
             });
         }
 
