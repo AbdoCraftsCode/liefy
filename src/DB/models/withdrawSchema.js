@@ -37,6 +37,10 @@ const withdrawSchema = new mongoose.Schema({
         type: String, // اسم الحساب على المحفظة / البنك
         required: true
     },
+    reason: {
+        type: String, // اسم الحساب على المحفظة / البنك
+       
+    },
 
     createdBy: {
         type: mongoose.Schema.Types.ObjectId, // الادمن اللي نفذ العملية

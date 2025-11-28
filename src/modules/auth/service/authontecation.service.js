@@ -1307,27 +1307,45 @@ export const getMyPendingWithdrawRequests = async (req, res) => {
             });
         }
 
-        // جلب السحب اللي حالتها pending فقط
+        const { status } = req.query; // ابعت الحالة كـ query parameter: pending, approved, rejected, completed
+
+        if (!status || !["pending", "approved", "rejected", "completed"].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "حالة غير صالحة. استخدم: pending, approved, rejected, completed"
+            });
+        }
+
         const withdraws = await Withdraw.find({
             driverId: req.user._id,
-            status: "pending"
+            status
         }).sort({ createdAt: -1 });
+
+        // لو الحالة rejected نضيف الحقل reason لكل طلب
+        const response = withdraws.map(w => {
+            const data = w.toObject();
+            if (status === "rejected") {
+                data.reason = w.reason || "";
+            }
+            return data;
+        });
 
         return res.status(200).json({
             success: true,
             count: withdraws.length,
-            withdraws
+            withdraws: response
         });
 
     } catch (error) {
-        console.error("❌ Get My Pending Withdraws Error:", error);
+        console.error("❌ Get My Withdraws By Status Error:", error);
         return res.status(500).json({
             success: false,
-            message: "حدث خطأ أثناء جلب طلبات السحب المعلقة",
+            message: "حدث خطأ أثناء جلب طلبات السحب",
             error: error.message
         });
     }
 };
+
 
 
 
@@ -1659,6 +1677,86 @@ export const updateOrderStatusdlivery = async (req, res) => {
 
 
 
+export const reviewWithdrawRequest = async (req, res) => {
+    try {
+        const { withdrawId, status, reason } = req.body;
+
+        // 🔹 تحقق من صلاحية المستخدم (Owner/Admin)
+        if (!req.user?._id || req.user.accountType !== "Owner") {
+            return res.status(401).json({
+                success: false,
+                message: "غير مصرح - يجب أن تكون مالك النظام"
+            });
+        }
+
+        if (!withdrawId || !status) {
+            return res.status(400).json({
+                success: false,
+                message: "withdrawId و status مطلوبين"
+            });
+        }
+
+        const withdraw = await Withdraw.findById(withdrawId).populate("driverId", "fullName fcmToken phone");
+        if (!withdraw) {
+            return res.status(404).json({ success: false, message: "طلب السحب غير موجود" });
+        }
+
+        // 🔹 تحديث الحالة
+        withdraw.status = status;
+        if (status === "rejected") {
+            if (!reason) {
+                return res.status(400).json({ success: false, message: "السبب مطلوب عند الرفض" });
+            }
+            withdraw.reason = reason; // تخزين السبب مباشرة في الحقل المخصص
+        }
+        await withdraw.save();
+
+        // 🔹 إرسال الإشعار عبر FCM
+        const driver = withdraw.driverId;
+        if (driver?.fcmToken) {
+            let notificationBody = "";
+
+            if (status === "approved") {
+                notificationBody = `تمت الموافقة على طلب السحب الخاص بك وسيتم إرسال الأموال في أقرب وقت.`;
+            } else if (status === "rejected") {
+                notificationBody = `تم رفض طلب السحب الخاص بك. السبب: ${reason}`;
+            } else if (status === "completed") {
+                notificationBody = `تم إرسال الأموال إلى حسابك. يرجى التحقق من محفظتك.`;
+            }
+
+            try {
+                await admin.messaging().send({
+                    notification: {
+                        title: "تحديث حالة طلب السحب",
+                        body: notificationBody
+                    },
+                    data: {
+                        withdrawId: withdraw._id.toString(),
+                        status,
+                        type: "WITHDRAW_STATUS"
+                    },
+                    token: driver.fcmToken
+                });
+            } catch (err) {
+                console.error("❌ فشل إرسال الإشعار:", err.message);
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `تم تحديث حالة طلب السحب إلى ${status}`,
+            withdraw
+        });
+
+    } catch (error) {
+        console.error("❌ Review Withdraw Request Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء تحديث حالة طلب السحب",
+            error: error.message
+        });
+    }
+};
 
 
 
