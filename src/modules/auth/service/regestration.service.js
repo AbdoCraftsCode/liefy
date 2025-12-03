@@ -7186,6 +7186,9 @@ import { ReportModel } from "../../../DB/models/reportSchema.js";
 import { verifyOTP } from "./authontecation.service.js";
 import AppSettingsSchema from "../../../DB/models/AppSettingsSchema.js";
 
+import { dliveryModel } from "../../../DB/models/dliveryorder.js";
+import { ComplaintModell } from "../../../DB/models/complaintSchemaaaaa.js";
+
 export const updateSubscription = asyncHandelr(async (req, res, next) => {
     const { userId } = req.params;
     const { addDays } = req.body;
@@ -7781,5 +7784,36 @@ export const updateMyProfile = asyncHandelr(async (req, res, next) => {
         success: true,
         message: "✅ تم تحديث البروفايل بنجاح",
         data: updatedUser,
+    });
+});
+
+
+export const createComplaintttt = asyncHandelr(async (req, res, next) => {
+    const { orderId, message } = req.body;
+    const userId = req.user._id;
+
+    const order = await dliveryModel.findById(orderId);
+    if (!order) return next(new Error("الطلب غير موجود", { cause: 404 }));
+
+    const isClient = order.createdBy.toString() === userId.toString();
+    const isCaptain = order.assignedTo && order.assignedTo.toString() === userId.toString();
+
+    if (!isClient && !isCaptain) {
+        return next(new Error("غير مسموح لك بالشكوى على هذا الطلب", { cause: 403 }));
+    }
+
+    const role = isClient ? "client" : "captain";
+
+    const complaint = await ComplaintModell.create({
+        orderId,
+        complainant: userId,
+        complainantRole: role,
+        message: message.trim(),
+    });
+
+    return res.status(201).json({
+        success: true,
+        message: "تم تقديم الشكوى بنجاح",
+        data: complaint
     });
 });
