@@ -7792,9 +7792,18 @@ export const createComplaintttt = asyncHandelr(async (req, res, next) => {
     const { orderId, message } = req.body;
     const userId = req.user._id;
 
-    const order = await dliveryModel.findById(orderId);
-    if (!order) return next(new Error("الطلب غير موجود", { cause: 404 }));
+    // تحقق من البيانات الأساسية
+    if (!orderId || !message?.trim()) {
+        return next(new Error("معرف الطلب والرسالة مطلوبان", { cause: 400 }));
+    }
 
+    // جلب الطلب
+    const order = await dliveryModel.findById(orderId);
+    if (!order) {
+        return next(new Error("الطلب غير موجود", { cause: 404 }));
+    }
+
+    // تحقق من صلاحية المستخدم
     const isClient = order.createdBy.toString() === userId.toString();
     const isCaptain = order.assignedTo && order.assignedTo.toString() === userId.toString();
 
@@ -7804,6 +7813,24 @@ export const createComplaintttt = asyncHandelr(async (req, res, next) => {
 
     const role = isClient ? "client" : "captain";
 
+    // الفحص المهم: هل الشخص ده عمل شكوى قبل كده على نفس الطلب؟
+    const existingComplaint = await ComplaintModell.findOne({
+        orderId,
+        complainant: userId
+    });
+
+    if (existingComplaint) {
+        // رسالة واضحة وجميلة للعميل بدل الـ E11000
+        return res.status(400).json({
+            success: false,
+            message: "لقد قمت بتقديم شكوى على هذا الطلب من قبل",
+            data: {
+                previousComplaint: existingComplaint
+            }
+        });
+    }
+
+    // لو مفيش تكرار → نعمل الشكوى بأمان
     const complaint = await ComplaintModell.create({
         orderId,
         complainant: userId,
@@ -7813,7 +7840,7 @@ export const createComplaintttt = asyncHandelr(async (req, res, next) => {
 
     return res.status(201).json({
         success: true,
-        message: "تم تقديم الشكوى بنجاح",
+        message: "تم تقديم الشكوى بنجاح، سيتم مراجعتها قريباً",
         data: complaint
     });
 });
