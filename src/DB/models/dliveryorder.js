@@ -125,6 +125,16 @@ const OrderSchema = new mongoose.Schema({
         default: () => `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`
     },
 
+    fromTime: {
+        type: String,
+        default: null
+    },
+    toTime: {
+        type: String,
+        default: null
+    },
+
+
     negotiations: [
         {
             offeredBy: {

@@ -509,6 +509,8 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         destinationLongitude,
         destinationLatitude,
         orderPrice,
+        toTime,
+        fromTime,
         deliveryPrice,
         totalPrice, // <<< هيفضل موجود بس هنحسب الديناميكي ونستخدمه
         orderDetails = ""
@@ -552,6 +554,8 @@ export const createOrderClient = asyncHandelr(async (req, res, next) => {
         status: "pending",       // الطلب لسه جديد
         subStatus: "waiting",
         phone,
+        toTime,
+        fromTime,
         source: {
             address: sourceAddress,
             location: {
