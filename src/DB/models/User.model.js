@@ -80,6 +80,7 @@ const userSchema = new Schema({
         default: null
     },
 
+
     serviceRef: {
         type: mongoose.Schema.Types.ObjectId,
         refPath: 'serviceTypeRef',
@@ -126,6 +127,17 @@ const userSchema = new Schema({
         public_id: { type: String, default: null }
     },
 
+
+    profie1: {
+        secure_url: { type: String, default: null },
+        public_id: { type: String, default: null }
+    },
+    profie2: {
+        secure_url: { type: String, default: null },
+        public_id: { type: String, default: null }
+    },
+
+
     subscription: {
         startDate: { type: Date, default: Date.now }, // تاريخ بداية الاشتراك
         endDate: {
@@ -134,6 +146,24 @@ const userSchema = new Schema({
         },
         planType: { type: String, default: "FreeTrial" } // FreeTrial | Premium | Custom
     },
+
+    url: {
+        type: String,
+        // required: true,
+    },
+    fileSize: {
+            // required: true,
+    },  type: Number, // MB
+  
+    fileType: {
+        type: String,
+        // required: true,
+    },
+    fileName: {
+        type: String,
+        // required: true,
+    },
+
 
     location: {
         type: {

@@ -40,7 +40,7 @@ import fs from 'fs';
 const AUTHENTICA_API_KEY = "ad5348edf3msh15d5daec987b64cp183e9fjsne1092498134c";
 const AUTHENTICA_BASE_URL = "https://authentica1.p.rapidapi.com/api/v2";
 
-export async function sendOTP(phone, method = "sms") {
+export async function sendOTP(phone, method = "whatsapp") {
     try {
         const response = await axios.post(
             `${AUTHENTICA_BASE_URL}/send-otp`,
@@ -204,7 +204,131 @@ export const signup = asyncHandelr(async (req, res, next) => {
 });
 
 
+export const signupdelivery = asyncHandelr(async (req, res, next) => {
+    const { fullName, password, phone, accountType } = req.body;
 
+    // ✅ تحقق من وجود رقم الهاتف
+    if (!phone) {
+        return next(new Error("يجب إدخال رقم الهاتف", { cause: 400 }));
+    }
+
+    // ✅ تحقق من عدم تكرار رقم الهاتف
+    const checkuser = await dbservice.findOne({
+        model: Usermodel,
+        filter: { phone }
+    });
+    if (checkuser) {
+        return next(new Error("رقم الهاتف مستخدم من قبل", { cause: 400 }));
+    }
+
+    // ================================
+    // 🚀 معالجة الفيديو والصور (اختياري)
+    // ================================
+    let uploadedVideo = null;
+    let videoSizeMB = 0;
+    let videoFileInfo = {};
+
+    let uploadedProfile1 = null;
+    let uploadedProfile2 = null;
+
+    // رفع الفيديو فقط لو موجود
+    if (req.files?.video?.[0]) {
+        const videoFile = req.files.video[0];
+        const videoResourceType = videoFile.mimetype.startsWith("video/") ? "video" : "raw";
+
+        uploadedVideo = await cloud.uploader.upload(videoFile.path, {
+            resource_type: videoResourceType,
+            folder: "signup/videos",
+            use_filename: true,
+            unique_filename: false,
+        });
+
+        videoSizeMB = Math.ceil(videoFile.size / (1024 * 1024));
+        videoFileInfo = {
+            url: uploadedVideo.secure_url,
+            fileSize: videoSizeMB,
+            fileType: videoFile.mimetype,
+            fileName: videoFile.originalname,
+        };
+
+        // حذف الفيديو من السيرفر بعد الرفع
+        fs.unlinkSync(videoFile.path);
+    }
+
+    // رفع الصورة الأولى لو موجودة
+    if (req.files?.profile1?.[0]) {
+        const profile1File = req.files.profile1[0];
+        uploadedProfile1 = await cloud.uploader.upload(profile1File.path, {
+            resource_type: "image",
+            folder: "signup/profile",
+            use_filename: true,
+            unique_filename: false,
+        });
+        fs.unlinkSync(profile1File.path);
+    }
+
+    // رفع الصورة الثانية لو موجودة
+    if (req.files?.profile2?.[0]) {
+        const profile2File = req.files.profile2[0];
+        uploadedProfile2 = await cloud.uploader.upload(profile2File.path, {
+            resource_type: "image",
+            folder: "signup/profile",
+            use_filename: true,
+            unique_filename: false,
+        });
+        fs.unlinkSync(profile2File.path);
+    }
+
+    // ================================
+    // 🔐 تشفير كلمة المرور
+    // ================================
+    const hashpassword = await generatehash({ planText: password });
+
+    // ================================
+    // 📝 إنشاء المستخدم في DB
+    // ================================
+    const user = await dbservice.create({
+        model: Usermodel,
+        data: {
+            fullName,
+            password: hashpassword,
+            phone,
+            accountType,
+            // الفيديو والصور اختيارية
+            ...(uploadedVideo && {
+                url: uploadedVideo.secure_url,
+                fileSize: videoSizeMB,
+                fileType: videoFileInfo.fileType,
+                fileName: videoFileInfo.fileName,
+            }),
+            ...(uploadedProfile1 && {
+                profie1: {  // ملاحظة: كنت كاتب profie1 بدون "l" → لو المودل عندك كده خليه، لو لأ صححه لـ profile1
+                    secure_url: uploadedProfile1.secure_url,
+                    public_id: uploadedProfile1.public_id,
+                }
+            }),
+            ...(uploadedProfile2 && {
+                profie2: {
+                    secure_url: uploadedProfile2.secure_url,
+                    public_id: uploadedProfile2.public_id,
+                }
+            })
+        }
+    });
+
+    // ================================
+    // 🔔 إرسال OTP
+    // ================================
+    try {
+        await sendOTP(phone);
+        console.log(`OTP تم إرساله إلى الهاتف: ${phone}`);
+    } catch (error) {
+        console.error("فشل إرسال OTP:", error.message);
+        return next(new Error("فشل في إرسال رمز التحقق", { cause: 500 }));
+    }
+
+    return successresponse(res, "تم إنشاء الحساب بنجاح، وتم إرسال رمز التحقق", 201);
+});
 
 
 
@@ -6707,6 +6831,8 @@ export const createOrder = asyncHandelr(async (req, res, next) => {
         restaurantId,
         contactNumber,
         additionalNotes,
+
+
         addressText,
         products,
         restaurantLocationLink,

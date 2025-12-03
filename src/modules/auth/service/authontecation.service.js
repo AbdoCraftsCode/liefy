@@ -1398,6 +1398,85 @@ export const createWithdrawRequest = async (req, res) => {
 
 
 
+
+export const resetSucceededPayments = async (req, res) => {
+    try {
+        if (!req.user?._id || req.user.accountType !== "Owner") {
+            return res.status(401).json({ success: false, message: "غير مصرح" });
+        }
+
+        const { deliveryIds } = req.body;
+        if (!deliveryIds || !Array.isArray(deliveryIds) || deliveryIds.length === 0) {
+            return res.status(400).json({ success: false, message: "يرجى إرسال قائمة ID الدليفري" });
+        }
+
+        // 🔹 جلب الدليفري المحددة والتي حالتها completed
+        const selectedDeliveries = await dliveryModel.find({
+            _id: { $in: deliveryIds },
+            status: "completed"
+        }).populate("assignedTo", "fullName fcmToken");
+
+        if (!selectedDeliveries.length) {
+            return res.status(200).json({ success: true, message: "لا توجد دفعات لتصفيرها", updatedPaymentsCount: 0 });
+        }
+
+        // 🔹 تصفية المدفوعات المرتبطة بهذه الدليفري
+        const paymentsToReset = await Payment.find({
+            tripPriceId: { $in: selectedDeliveries.map(d => d._id.toString()) },
+            status: "succeeded"
+        });
+
+        if (!paymentsToReset.length) {
+            return res.status(200).json({ success: true, message: "لا توجد دفعات ناجحة لتصفيرها", updatedPaymentsCount: 0 });
+        }
+
+        // 🔹 تصفير المدفوعات
+        const updateResult = await Payment.updateMany(
+            { tripPriceId: { $in: paymentsToReset.map(p => p.tripPriceId) }, status: "succeeded" },
+            { $set: { amount: 0, deliveryRemaining: 0, paidDeliveryAmount: 0 } }
+        );
+
+        // 🔹 إرسال إشعارات
+        for (const delivery of selectedDeliveries) {
+            const driver = delivery.assignedTo;
+            if (!driver?.fcmToken) continue;
+
+            const notificationBody = `تم تصفير الرصيد الخاص بك للطلب (${delivery._id}).`;
+
+            try {
+                await admin.messaging().send({
+                    notification: { title: "تحديث حالة الرصيد", body: notificationBody },
+                    data: { deliveryId: delivery._id.toString(), status: "reset", type: "WITHDRAW_STATUS" },
+                    token: driver.fcmToken
+                });
+            } catch (err) {
+                console.error(`❌ فشل إرسال الإشعار لـ ${driver.fullName}:`, err.message);
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "تم تصفير المدفوعات وإرسال الإشعارات بنجاح",
+            updatedPaymentsCount: updateResult.modifiedCount,
+            deliveries: selectedDeliveries
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ success: false, message: "حدث خطأ أثناء تصفير المدفوعات", error: error.message });
+    }
+};
+
+
+
+
+
+
+
+
+
+
+
 export const addFavoritePlace = async (req, res) => {
     try {
         const { name, address, latitude, longitude } = req.body;
@@ -1475,6 +1554,9 @@ export const deleteFavoritePlace = async (req, res) => {
         });
     }
 };
+
+
+
 
 
 export const getMyFavoritePlaces = async (req, res) => {
