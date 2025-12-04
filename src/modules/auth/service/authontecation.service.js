@@ -1931,6 +1931,72 @@ export const updateOrderStatusdlivery = async (req, res) => {
 
 
 
+export const sendNotificationById = async (req, res) => {
+    try {
+        const { userId, title, body, data } = req.body;
+
+        if (!userId || !title || !body) {
+            return res.status(400).json({
+                success: false,
+                message: "userId + title + body مطلوبين"
+            });
+        }
+
+        // جلب المستخدم
+        const user = await Usermodel.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "المستخدم غير موجود"
+            });
+        }
+
+        if (!user.fcmToken) {
+            return res.status(400).json({
+                success: false,
+                message: "لا يوجد FCM Token للمستخدم"
+            });
+        }
+
+        const token = user.fcmToken.trim();
+
+        // إعداد رسالة الإشعار
+        const message = {
+            notification: {
+                title,
+                body
+            },
+            token
+        };
+
+        // لو فيه data ابعتها، لو مش فيه ما تبعتهاش
+        if (data && typeof data === "object") {
+            message.data = Object.fromEntries(
+                Object.entries(data).map(([k, v]) => [String(k), String(v)])
+            );
+        }
+
+        // إرسال الإشعار
+        await admin.messaging().send(message);
+
+        return res.status(200).json({
+            success: true,
+            message: "تم إرسال الإشعار بنجاح"
+        });
+
+    } catch (error) {
+        console.error("❌ Notification Send Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء إرسال الإشعار",
+            error: error.message
+        });
+    }
+};
+
+
+
 export const reviewWithdrawRequest = async (req, res) => {
     try {
         const { withdrawId, status, reason } = req.body;
