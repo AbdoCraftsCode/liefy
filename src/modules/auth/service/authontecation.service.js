@@ -1279,6 +1279,94 @@ export const getDriverPaymentsSummary = async (req, res) => {
 };
 
 
+
+export const getDriverPaymentsSummaryADMIN = async (req, res) => {
+    try {
+
+        // استخدام ID من الـ params بدلاً من التوكن
+        if (!req.params?.id) {
+            return res.status(400).json({ message: "يجب إرسال ID المندوب" });
+        }
+
+        const driverId = req.params.id;
+
+        // 1) الطلبات المكتملة اللي تخص المندوب
+        const completedOrders = await dliveryModel.find({
+            assignedTo: driverId,
+            status: "completed"
+        }).populate("createdBy", "fullName phone profileImage"); // ← بيانات صاحب الطلب
+
+        if (!completedOrders.length) {
+            return res.status(200).json({
+                success: true,
+                totalAmount: 0,
+                totalDeliveryRemaining: 0,
+                totalPaidDeliveryAmount: 0,
+                payments: []
+            });
+        }
+
+        const orderIds = completedOrders.map(o => o._id.toString());
+
+        // 2) كل المدفوعات المكتملة
+        const succeededPayments = await Payment.find({
+            tripPriceId: { $in: orderIds },
+            status: "succeeded"
+        });
+
+        // 3) حساب المجاميع
+        const totalAmount = succeededPayments.reduce((a, p) => a + p.amount, 0);
+        const totalDeliveryRemaining = succeededPayments.reduce((a, p) => a + p.deliveryRemaining, 0);
+        const totalPaidDeliveryAmount = succeededPayments.reduce((a, p) => a + p.paidDeliveryAmount, 0);
+
+        // 4) دمج بيانات الطلب + بيانات صاحب الطلب
+        const finalPayments = succeededPayments.map(payment => {
+            const order = completedOrders.find(
+                o => o._id.toString() === payment.tripPriceId.toString()
+            );
+
+            return {
+                payment,
+                order,
+                customer: order?.createdBy
+                    ? {
+                        id: order.createdBy._id,
+                        name: order.createdBy.fullName,
+                        phone: order.createdBy.phone,
+                        profileImage: order.createdBy.profileImage || null
+                    }
+                    : null
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            totalAmount,
+            totalDeliveryRemaining,
+            totalPaidDeliveryAmount,
+            payments: finalPayments
+        });
+
+    } catch (error) {
+        console.error("❌ Error fetching payment summary:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب البيانات",
+            error: error.message
+        });
+    }
+};
+
+
+
+
+
+
+
+
+
+
+
 export const getAllWithdrawRequests = async (req, res) => {
     try {
         const withdraws = await Withdraw.find()
@@ -3904,7 +3992,9 @@ export const getAppSettingsAdmin = asyncHandelr(async (req, res, next) => {
 export const getCompletedOrders = asyncHandelr(async (req, res) => {
 
     // 1) هنجمع كل الطلبات اللي خلصت
-    const orders = await dliveryModel.find({ status: "completed" })
+    const orders = await dliveryModel.find({
+        status: { $in: ["completed", "active"] }
+    })
         .populate({
             path: "assignedTo",
             select: "fullName phone"

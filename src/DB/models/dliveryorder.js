@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { OrderCounter } from "./CounterSchema.js";
 
 const PointSchema = new mongoose.Schema({
     type: {
@@ -11,6 +12,9 @@ const PointSchema = new mongoose.Schema({
         required: true
     }
 }, { _id: false });
+
+
+
 
 const OrderSchema = new mongoose.Schema({
     customerName: {
@@ -121,9 +125,10 @@ const OrderSchema = new mongoose.Schema({
 
     orderNumber: {
         type: String,
-        unique: true,
-        default: () => `ORD-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+        unique: true
     },
+
+
 
     fromTime: {
         type: String,
@@ -162,4 +167,17 @@ const OrderSchema = new mongoose.Schema({
     }
 });
 
+
+OrderSchema.pre("save", async function (next) {
+    if (!this.isNew) return next();
+
+    const counter = await OrderCounter.findOneAndUpdate(
+        { name: "order" },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true }
+    );
+
+    this.orderNumber = `ORD-${counter.seq}`;
+    next();
+});
 export const dliveryModel = mongoose.model("dlivery", OrderSchema);
