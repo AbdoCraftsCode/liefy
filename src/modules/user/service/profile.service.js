@@ -686,6 +686,7 @@ export const getAllProviders = async (req, res) => {
             {
                 phone: 1,
                 fullName: 1,
+                status: 1,
                 profie1: 1,
                 profie2: 1,
                 // profiePicture: 1,
