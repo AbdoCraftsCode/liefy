@@ -7844,3 +7844,8 @@ export const createComplaintttt = asyncHandelr(async (req, res, next) => {
         data: complaint
     });
 });
+
+
+
+// Get all normal users
+

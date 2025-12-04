@@ -559,7 +559,7 @@ export const savetoken = asyncHandelr(async (req, res, next) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: "حدث خطأ أثناء حفظ التوكن" });
-    }
+     }
 
 });
 
@@ -589,8 +589,92 @@ export const deleteFcmToken = asyncHandelr(async (req, res) => {
 
 
 
+import twilio from "twilio";
+
+const client = twilio(
+    process.env.TWILIO_ACCOUNT_SID,
+    process.env.TWILIO_AUTH_TOKEN
+);
+
+// إرسال OTP
+export const sendOTP = async (phone, otp) => {
+    return await client.messages.create({
+        body: `Your verification code is: ${otp}`,
+        from: process.env.TWILIO_PHONE,
+        to: phone  // لازم يكون رقم verified
+    });
+};
+
+
+
+export const sendOtpController = async (req, res, next) => {
+    const { phone } = req.body;
+
+    if (!phone) return next(new Error("Phone is required"));
+
+    // توليد كود
+    const otp = Math.floor(1000 + Math.random() * 9000);
+
+
+    // احفظه في الـ DB أو الـ Redis
+    req.app.locals[phone] = otp;
+
+    // ارسال SMS
+    await sendOTP(phone, otp);
+
+    res.status(200).json({
+        success: true,
+        message: "OTP sent successfully",
+        otp  // فقط للتاست — امسحه عند الإنتاج
+    });
+};
+
+
+export const verifyOtpController = async (req, res, next) => {
+    const { phone, otp } = req.body;
+
+    if (!phone || !otp) return next(new Error("Phone and OTP are required"));
+
+    const savedOtp = req.app.locals[phone];
+
+    if (!savedOtp) {
+        return next(new Error("OTP expired or not sent"));
+    }
+
+    if (String(savedOtp) !== String(otp)) {
+        return next(new Error("Invalid OTP"));
+    }
+
+    // نجاح
+    delete req.app.locals[phone]; // امسح الكود
+
+    res.status(200).json({
+        success: true,
+        message: "Phone verified successfully"
+    });
+};
 
 
 
 
 
+
+export const getAllNormalUsers = async (req, res) => {
+    try {
+        const users = await Usermodel.find(
+            { accountType: "User" },      // الشرط
+            { phone: 1, fullName: 1 }     // الفيلدز اللي هنعرضها
+        );
+
+        res.status(200).json({
+            success: true,
+            count: users.length,
+            users
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};

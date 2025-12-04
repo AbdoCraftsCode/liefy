@@ -3821,3 +3821,14 @@ export const getAppSettingsAdmin = asyncHandelr(async (req, res, next) => {
     // ✅ إرجاع البيانات في شكل Array
     return successresponse(res, "✅ تم جلب الإعدادات بنجاح", 200, { settings });
 });
+
+
+
+
+// services/twilio.service.js
+
+
+
+
+
+
