@@ -3901,6 +3901,56 @@ export const getAppSettingsAdmin = asyncHandelr(async (req, res, next) => {
 
 
 
+export const getCompletedOrders = asyncHandelr(async (req, res) => {
+
+    // 1) هنجمع كل الطلبات اللي خلصت
+    const orders = await dliveryModel.find({ status: "completed" })
+        .populate({
+            path: "assignedTo",
+            select: "fullName phone"
+        })
+        .sort({ createdAt: -1 });
+
+    // 2) تنسيق البيانات بشكل منظم
+    const formatted = orders.map(order => ({
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+
+        customerName: order.customerName,
+        customerPhone: order.phone,
+
+        from: order.source?.address,
+        to: order.destination?.address,
+
+        orderPrice: order.orderPrice,
+        deliveryPrice: order.deliveryPrice,
+        totalPrice: order.totalPrice,
+
+        status: order.status,
+        subStatus: order.subStatus,
+        toTime: order.toTime,
+        fromTime: order.fromTime,
+
+        delivery: order.assignedTo ? {
+            id: order.assignedTo._id,
+            name: order.assignedTo.fullName,
+            phone: order.assignedTo.phone
+        } : null,
+
+        createdAt: order.createdAt
+    }));
+
+    return res.status(200).json({
+        success: true,
+        count: formatted.length,
+        orders: formatted
+    });
+});
+
+
+
+
+
 
 // services/twilio.service.js
 
