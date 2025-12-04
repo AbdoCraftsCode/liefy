@@ -678,3 +678,42 @@ export const getAllNormalUsers = async (req, res) => {
         });
     }
 };
+
+export const getAllProviders = async (req, res) => {
+    try {
+        const users = await Usermodel.find(
+            { accountType: "ServiceProvider" },
+            {
+                phone: 1,
+                fullName: 1,
+                profie1: 1,
+                profie2: 1,
+                // profiePicture: 1,
+                url: 1,
+                fileSize: 1,
+                fileType: 1,
+                fileName: 1,
+                // subscription: 1,
+                // location: 1,
+                // carImages: 1,
+                // Insurancedocuments: 1,
+                // nationalIdImage: 1,
+                // driverLicenseImage: 1,
+                // carLicenseImage: 1
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            count: users.length,
+            users
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
