@@ -1845,6 +1845,83 @@ export const reviewWithdrawRequest = async (req, res) => {
 };
 
 
+export const reviewDeliveryAccount = asyncHandelr(async (req, res) => {
+    const { userId, status, reason } = req.body;
+
+    // // 1) التحقق من صلاحية الأدمن / Owner
+    // if (!req.user?._id || req.user.accountType !== "Owner") {
+    //     return res.status(401).json({
+    //         success: false,
+    //         message: "غير مصرح - يجب أن تكون Owner"
+    //     });
+    // }
+
+    // 2) التحقق من البيانات المطلوبة
+    if (!userId || !status) {
+        return res.status(400).json({
+            success: false,
+            message: "userId و status مطلوبين"
+        });
+    }
+
+    // 3) البحث عن المستخدم
+    const user = await Usermodel.findById(userId);
+    if (!user) {
+        return res.status(404).json({
+            success: false,
+            message: "المستخدم غير موجود"
+        });
+    }
+
+    // 4) تحديث الحالة
+    user.status = status;
+    if (status === "rejected") {
+        if (!reason) {
+            return res.status(400).json({
+                success: false,
+                message: "السبب مطلوب عند الرفض"
+            });
+        }
+        user.reason = reason; // لو عندك حقل للسبب
+    }
+    await user.save();
+
+    // 5) إرسال الإشعار للمستخدم
+    if (user.fcmToken) {
+        let bodyMessage = "";
+
+        if (status === "accepted") {
+            bodyMessage = "تم قبول حسابك ويمكنك الآن البدء في العمل معنا 🚀";
+        }
+        else if (status === "rejected") {
+            bodyMessage = `تم رفض حسابك. السبب: ${reason}`;
+        }
+
+        try {
+            await admin.messaging().send({
+                notification: {
+                    title: "تحديث حالة حسابك",
+                    body: bodyMessage
+                },
+                data: {
+                    userId: user._id.toString(),
+                    status,
+                    type: "ACCOUNT_STATUS"
+                },
+                token: user.fcmToken
+            });
+        } catch (err) {
+            console.error("❌ فشل إرسال الإشعار:", err.message);
+        }
+    }
+
+    // 6) الرد النهائي
+    return res.status(200).json({
+        success: true,
+        message: `تم تحديث حالة المستخدم إلى ${status}`,
+        user
+    });
+});
 
 export const createNegotiation = async (req, res) => {
     try {
