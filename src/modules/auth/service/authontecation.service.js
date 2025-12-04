@@ -729,6 +729,7 @@ import { FavoritePlace } from "../../../DB/models/FavoritePlace.js";
 import { NotificationModell } from "../../../DB/models/notificationSchema.js";
 import { Complaint } from "../../../DB/models/complaintSchema.js";
 import { Withdraw } from "../../../DB/models/withdrawSchema.js";
+import { ComplaintModell } from "../../../DB/models/complaintSchemaaaaa.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -1357,7 +1358,86 @@ export const getDriverPaymentsSummaryADMIN = async (req, res) => {
     }
 };
 
+export const getAllComplaints = async (req, res) => {
+    try {
+        const complaints = await ComplaintModell.find()
+            .populate("complainant", "fullName phone profileImage role")
+            .populate({
+                path: "orderId",
+                populate: {
+                    path: "assignedTo",
+                    select: "fullName phone"
+                }
+            });
 
+        if (!complaints.length) {
+            return res.status(200).json({
+                success: true,
+                count: 0,
+                complaints: []
+            });
+        }
+
+        const formattedComplaints = complaints.map(c => {
+            const order = c.orderId;
+
+            return {
+                complaintId: c._id,
+                message: c.message,
+                status: c.status,
+                createdAt: c.createdAt,
+
+                complainant: {
+                    id: c.complainant?._id,
+                    name: c.complainant?.fullName,
+                    phone: c.complainant?.phone,
+                    profileImage: c.complainant?.profileImage || null,
+                    role: c.complainantRole
+                },
+
+                order: {
+                    orderId: order?._id,
+                    orderNumber: order?.orderNumber,
+                    customerName: order?.customerName,
+                    customerPhone: order?.phone,
+                    from: order?.source?.address,
+                    to: order?.destination?.address,
+                    orderPrice: order?.orderPrice,
+                    deliveryPrice: order?.deliveryPrice,
+                    totalPrice: order?.totalPrice,
+                    status: order?.status,
+                    subStatus: order?.subStatus,
+                    toTime: order?.toTime,
+                    fromTime: order?.fromTime,
+
+                    delivery: order?.assignedTo
+                        ? {
+                            id: order.assignedTo._id,
+                            name: order.assignedTo.fullName,
+                            phone: order.assignedTo.phone
+                        }
+                        : null,
+
+                    createdAt: order?.createdAt
+                }
+            };
+        });
+
+        return res.status(200).json({
+            success: true,
+            count: formattedComplaints.length,
+            complaints: formattedComplaints
+        });
+
+    } catch (error) {
+        console.error("❌ Error fetching complaints:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب الشكاوى",
+            error: error.message
+        });
+    }
+};
 
 
 
