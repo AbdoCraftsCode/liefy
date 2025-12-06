@@ -1600,6 +1600,57 @@ export const createWithdrawRequest = async (req, res) => {
 
 
 
+export const updateUserLanguage = async (req, res) => {
+    try {
+        const userId = req.user?._id;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                message: "غير مصرح - يجب تسجيل الدخول"
+            });
+        }
+
+        const { lan } = req.body;
+
+        if (!lan) {
+            return res.status(400).json({
+                success: false,
+                message: "يجب إرسال اللغة الجديدة"
+            });
+        }
+
+        // لو عايز تحدد لغات معينة فقط
+        const allowedLanguages = ["ar", "en", "gr"];
+        if (!allowedLanguages.includes(lan)) {
+            return res.status(400).json({
+                success: false,
+                message: "لغة غير مدعومة"
+            });
+        }
+
+        const updatedUser = await Usermodel.findByIdAndUpdate(
+            userId,
+            { lan },
+            { new: true }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: "تم تحديث اللغة بنجاح",
+            user: updatedUser
+        });
+
+    } catch (error) {
+        console.error("❌ Update Language Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء تحديث اللغة",
+            error: error.message
+        });
+    }
+};
+
 
 
 
@@ -2831,7 +2882,7 @@ export const getMyInfo = async (req, res, next) => {
     try {
         const userId = req.user.id; // ✅ جاي من التوكن بعد الـ auth()
 
-        const user = await Usermodel.findById(userId).select("fullName phone profileImage");
+        const user = await Usermodel.findById(userId).select("fullName phone profileImage lan");
 
         if (!user) {
             return res.status(404).json({
@@ -2847,6 +2898,7 @@ export const getMyInfo = async (req, res, next) => {
                 id: user._id,
                 name: user.fullName,
                 phone: user.phone,
+                lan: user.lan,
                 profileImage: user.profileImage || null
             }
         });
