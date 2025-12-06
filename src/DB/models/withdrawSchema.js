@@ -13,37 +13,20 @@ const withdrawSchema = new mongoose.Schema({
         min: 1
     },
 
-    phone: {
+    provider: {
         type: String,
+        enum: ["paypal", "bankAccount"],
         required: true
     },
 
-    serviceName: {
-        type: String,  // مثل: "Vodafone Cash" – "Etisalat Cash" – "Bank Transfer"
-        required: true
-    },
-
-    fullName: {
-        type: String, // اسم صاحب الحساب اللي هيتحول له
-        required: true
-    },
-
-    accountNumber: {
-        type: String, // رقم الحساب / رقم المحفظة
-        required: true
-    },
-
-    accountName: {
-        type: String, // اسم الحساب على المحفظة / البنك
-        required: true
-    },
-    reason: {
-        type: String, // اسم الحساب على المحفظة / البنك
-       
+    identifier: {
+        email: { type: String },   // PayPal
+        iban: { type: String },    // Bank Account
+        name: { type: String }     // مشترك بينهم
     },
 
     createdBy: {
-        type: mongoose.Schema.Types.ObjectId, // الادمن اللي نفذ العملية
+        type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         default: null
     },
@@ -52,6 +35,10 @@ const withdrawSchema = new mongoose.Schema({
         type: String,
         enum: ["pending", "approved", "rejected", "completed"],
         default: "pending"
+    },
+
+    reason: {
+        type: String
     },
 
     createdAt: {
