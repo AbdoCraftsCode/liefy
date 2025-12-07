@@ -730,6 +730,7 @@ import { NotificationModell } from "../../../DB/models/notificationSchema.js";
 import { Complaint } from "../../../DB/models/complaintSchema.js";
 import { Withdraw } from "../../../DB/models/withdrawSchema.js";
 import { ComplaintModell } from "../../../DB/models/complaintSchemaaaaa.js";
+import { NotificationModel } from "../../../DB/models/notification.model.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET);
 
@@ -1845,14 +1846,189 @@ export const getMyFavoritePlaces = async (req, res) => {
 
 
 
+// export const updateOrderStatusdlivery = async (req, res) => {
+//     try {
+//         const { action } = req.body;
+//         const { orderId } = req.params;
+
+//         // التحقق من المستخدم
+//         const user = await Usermodel.findById(req.user._id);
+
+//         if (!user || user.accountType !== "ServiceProvider") {
+//             return res.status(403).json({
+//                 success: false,
+//                 message: "غير مسموح — هذا الإجراء متاح لمقدمي الخدمة فقط"
+//             });
+//         }
+
+//         // جلب الطلب
+//         const order = await dliveryModel.findById(orderId);
+
+//         if (!order) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "الطلب غير موجود"
+//             });
+//         }
+
+//         // الطلب مكتمل؟ ممنوع نغيره
+//         if (order.status === "completed") {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "لا يمكن تغيير حالة طلب مكتمل"
+//             });
+//         }
+
+//         // تنفيذ العمليات
+//         let notificationTitle = "";
+//         let notificationBody = "";
+//         let notificationType = "";
+
+//         // ----------------------------------------------------------------------
+//         // ✔️ حالة قبول الطلب
+//         // ----------------------------------------------------------------------
+//         if (action === "accept") {
+
+//             order.status = "pending";
+//             order.subStatus = "assigned";
+//             order.assignedTo = req.user._id;
+
+//             notificationTitle = "✅ تم قبول عرضك!";
+//             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} بقبول طلبك وهو في انتظار الدفع.`;
+//             notificationType = "ORDER_ACCEPTED";
+
+//         }
+//         // ----------------------------------------------------------------------
+//         // ✔️ حالة رفض الطلب
+//         // ----------------------------------------------------------------------
+//         else if (action === "reject") {
+
+//             order.status = "cancelled";
+//             order.subStatus = "by_driver";
+//             order.assignedTo = req.user._id;
+
+//             notificationTitle = "❌ تم رفض الطلب";
+//             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} برفض الطلب.`;
+//             notificationType = "ORDER_REJECTED";
+
+//         }
+
+//         // ======================================================================
+//         // 🔥 الحالات الجديدة التي طلبتها بالظبط 🔥
+//         // ======================================================================
+
+//         // 🚗 الديلفري في الطريق لموقع الاستلام
+//         else if (action === "going_to_pickup") {
+
+//             order.status = "active";
+//             order.subStatus = "going_to_pickup";
+
+//             notificationTitle = "🚗 جاري التوجه لموقع الاستلام";
+//             notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق إلى موقع استلام طلبك.`;
+//             notificationType = "GOING_TO_PICKUP";
+//         }
+
+//         // 📦 تم أخذ الطلب من موقع الاستلام
+//         else if (action === "picked") {
+
+//             order.status = "active";
+//             order.subStatus = "picked";
+
+//             notificationTitle = "📦 تم استلام الطلب";
+//             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} باستلام الطلب من موقع الاستلام.`;
+//             notificationType = "ORDER_PICKED";
+//         }
+
+//         // 🛣️ الديلفري في الطريق لموقع التسليم
+//         else if (action === "going_to_destination") {
+
+//             order.status = "active";
+//             order.subStatus = "going_to_destination";
+
+//             notificationTitle = "🛵 في الطريق لموقع التسليم";
+//             notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق لتسليم طلبك.`;
+//             notificationType = "GOING_TO_DESTINATION";
+//         }
+
+//         // 🎉 تم تسليم الطلب
+//         else if (action === "delivered") {
+
+//             order.status = "completed";
+//             order.subStatus = "delivered";
+
+//             notificationTitle = "🎉 تم تسليم الطلب بنجاح";
+//             notificationBody = `تم تسليم طلبك بواسطة ${user.fullName || ""}. شكرًا لاستخدامك خدمتنا!`;
+//             notificationType = "ORDER_DELIVERED";
+//         }
+
+//         else {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "قيمة action غير صالحة"
+//             });
+//         }
+
+//         await order.save();
+
+//         // ------------------------------------------------------------------
+//         // 🔥 إرسال الإشعار للعميل
+//         // ------------------------------------------------------------------
+
+//         const client = await Usermodel.findById(order.createdBy);
+
+//         if (client && client.fcmToken) {
+//             const token = client.fcmToken.trim();
+
+//             try {
+//                 await admin.messaging().send({
+//                     notification: {
+//                         title: notificationTitle,
+//                         body: notificationBody,
+//                     },
+//                     data: {
+//                         orderId: order._id.toString(),
+//                         providerId: req.user._id.toString(),
+//                         type: notificationType
+//                     },
+//                     token
+//                 });
+
+//                 console.log("📨 تم إرسال إشعار تغيير حالة الطلب للعميل");
+
+//             } catch (err) {
+//                 console.error("❌ فشل إرسال إشعار للعميل:", err.message);
+//             }
+//         } else {
+//             console.log("⚠️ العميل ليس لديه FCM Token");
+//         }
+
+//         // ------------------------------------------------------------------
+
+//         return res.status(200).json({
+//             success: true,
+//             message: "تم تحديث حالة الطلب بنجاح",
+//             data: order
+//         });
+
+//     } catch (err) {
+//         console.error("❌ Order Status Update Error:", err);
+//         res.status(500).json({
+//             success: false,
+//             message: "حدث خطأ أثناء تحديث حالة الطلب"
+//         });
+//     }
+// };
+
+
+
+
+
 export const updateOrderStatusdlivery = async (req, res) => {
     try {
         const { action } = req.body;
         const { orderId } = req.params;
 
-        // التحقق من المستخدم
         const user = await Usermodel.findById(req.user._id);
-
         if (!user || user.accountType !== "ServiceProvider") {
             return res.status(403).json({
                 success: false,
@@ -1860,9 +2036,7 @@ export const updateOrderStatusdlivery = async (req, res) => {
             });
         }
 
-        // جلب الطلب
         const order = await dliveryModel.findById(orderId);
-
         if (!order) {
             return res.status(404).json({
                 success: false,
@@ -1870,7 +2044,6 @@ export const updateOrderStatusdlivery = async (req, res) => {
             });
         }
 
-        // الطلب مكتمل؟ ممنوع نغيره
         if (order.status === "completed") {
             return res.status(400).json({
                 success: false,
@@ -1878,89 +2051,49 @@ export const updateOrderStatusdlivery = async (req, res) => {
             });
         }
 
-        // تنفيذ العمليات
         let notificationTitle = "";
         let notificationBody = "";
         let notificationType = "";
 
-        // ----------------------------------------------------------------------
-        // ✔️ حالة قبول الطلب
-        // ----------------------------------------------------------------------
         if (action === "accept") {
-
             order.status = "pending";
             order.subStatus = "assigned";
             order.assignedTo = req.user._id;
-
             notificationTitle = "✅ تم قبول عرضك!";
             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} بقبول طلبك وهو في انتظار الدفع.`;
             notificationType = "ORDER_ACCEPTED";
-
-        }
-        // ----------------------------------------------------------------------
-        // ✔️ حالة رفض الطلب
-        // ----------------------------------------------------------------------
-        else if (action === "reject") {
-
+        } else if (action === "reject") {
             order.status = "cancelled";
             order.subStatus = "by_driver";
             order.assignedTo = req.user._id;
-
             notificationTitle = "❌ تم رفض الطلب";
             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} برفض الطلب.`;
             notificationType = "ORDER_REJECTED";
-
-        }
-
-        // ======================================================================
-        // 🔥 الحالات الجديدة التي طلبتها بالظبط 🔥
-        // ======================================================================
-
-        // 🚗 الديلفري في الطريق لموقع الاستلام
-        else if (action === "going_to_pickup") {
-
+        } else if (action === "going_to_pickup") {
             order.status = "active";
             order.subStatus = "going_to_pickup";
-
             notificationTitle = "🚗 جاري التوجه لموقع الاستلام";
             notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق إلى موقع استلام طلبك.`;
             notificationType = "GOING_TO_PICKUP";
-        }
-
-        // 📦 تم أخذ الطلب من موقع الاستلام
-        else if (action === "picked") {
-
+        } else if (action === "picked") {
             order.status = "active";
             order.subStatus = "picked";
-
             notificationTitle = "📦 تم استلام الطلب";
             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} باستلام الطلب من موقع الاستلام.`;
             notificationType = "ORDER_PICKED";
-        }
-
-        // 🛣️ الديلفري في الطريق لموقع التسليم
-        else if (action === "going_to_destination") {
-
+        } else if (action === "going_to_destination") {
             order.status = "active";
             order.subStatus = "going_to_destination";
-
             notificationTitle = "🛵 في الطريق لموقع التسليم";
             notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق لتسليم طلبك.`;
             notificationType = "GOING_TO_DESTINATION";
-        }
-
-        // 🎉 تم تسليم الطلب
-        else if (action === "delivered") {
-
+        } else if (action === "delivered") {
             order.status = "completed";
             order.subStatus = "delivered";
-
             notificationTitle = "🎉 تم تسليم الطلب بنجاح";
             notificationBody = `تم تسليم طلبك بواسطة ${user.fullName || ""}. شكرًا لاستخدامك خدمتنا!`;
             notificationType = "ORDER_DELIVERED";
-        }
-
-        else {
+        } else {
             return res.status(400).json({
                 success: false,
                 message: "قيمة action غير صالحة"
@@ -1969,15 +2102,18 @@ export const updateOrderStatusdlivery = async (req, res) => {
 
         await order.save();
 
-        // ------------------------------------------------------------------
-        // 🔥 إرسال الإشعار للعميل
-        // ------------------------------------------------------------------
+        // ----------------------------- حفظ الإشعار في قاعدة البيانات -----------------------------
+        await NotificationModel.create({
+            user: order.createdBy,   // 🔥 صاحب الطلب
+            order: order._id,
+            title: notificationTitle,
+            body: notificationBody,
+            type: notificationType
+        });
 
+        // ----------------------------- إرسال إشعار FCM إذا موجود -----------------------------
         const client = await Usermodel.findById(order.createdBy);
-
         if (client && client.fcmToken) {
-            const token = client.fcmToken.trim();
-
             try {
                 await admin.messaging().send({
                     notification: {
@@ -1989,19 +2125,15 @@ export const updateOrderStatusdlivery = async (req, res) => {
                         providerId: req.user._id.toString(),
                         type: notificationType
                     },
-                    token
+                    token: client.fcmToken.trim()
                 });
-
                 console.log("📨 تم إرسال إشعار تغيير حالة الطلب للعميل");
-
             } catch (err) {
                 console.error("❌ فشل إرسال إشعار للعميل:", err.message);
             }
         } else {
             console.log("⚠️ العميل ليس لديه FCM Token");
         }
-
-        // ------------------------------------------------------------------
 
         return res.status(200).json({
             success: true,
@@ -2018,6 +2150,41 @@ export const updateOrderStatusdlivery = async (req, res) => {
     }
 };
 
+
+
+// GET /notifications/:userId
+export const getUserNotifications = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            return res.status(400).json({ message: "❌ يجب إرسال معرف المستخدم" });
+        }
+
+        // التأكد من وجود المستخدم
+        const user = await Usermodel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "❌ المستخدم غير موجود" });
+        }
+
+        // جلب كل الإشعارات الخاصة بالمستخدم
+        const notifications = await NotificationModel.find({ user: userId })
+            .populate("order", "status subStatus assignedTo") // جلب بيانات أساسية عن الطلب
+            .sort({ createdAt: -1 }); // الأحدث أولاً
+
+        return res.status(200).json({
+            message: "✅ تم جلب جميع الإشعارات",
+            notifications
+        });
+
+    } catch (err) {
+        console.error("Error in getUserNotifications:", err);
+        return res.status(500).json({
+            message: "❌ حدث خطأ أثناء جلب الإشعارات",
+            error: err.message
+        });
+    }
+};
 
 
 
