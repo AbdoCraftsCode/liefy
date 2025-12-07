@@ -2188,6 +2188,42 @@ export const getUserNotifications = async (req, res) => {
 
 
 
+// PUT /notifications/mark-read/:userId
+export const markAllNotificationsAsReadd = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        if (!userId) {
+            return res.status(400).json({ message: "❌ يجب إرسال معرف المستخدم" });
+        }
+
+        // التأكد من وجود المستخدم
+        const user = await Usermodel.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "❌ المستخدم غير موجود" });
+        }
+
+        // تحديث كل الإشعارات لتصبح مقروءة
+        const result = await NotificationModel.updateMany(
+            { user: userId, isRead: false },
+            { $set: { isRead: true } }
+        );
+
+        return res.status(200).json({
+            message: `✅ تم تحديث ${result.modifiedCount} إشعار/إشعارات إلى مقروءة`,
+        });
+
+    } catch (err) {
+        console.error("Error in markAllNotificationsAsRead:", err);
+        return res.status(500).json({
+            message: "❌ حدث خطأ أثناء تحديث الإشعارات",
+            error: err.message
+        });
+    }
+};
+
+
+
 
 export const sendNotificationById = async (req, res) => {
     try {
