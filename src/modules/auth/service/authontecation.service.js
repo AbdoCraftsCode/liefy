@@ -2373,16 +2373,124 @@ export const sendNotificationById = async (req, res) => {
 // };
 
 
+// export const reviewWithdrawRequest = async (req, res) => {
+//     try {
+//         const { withdrawId, status, reason } = req.body;
+
+    
+
+//         if (!withdrawId || !status) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "withdrawId و status مطلوبين"
+//             });
+//         }
+
+//         const withdraw = await Withdraw.findById(withdrawId).populate("driverId", "fullName fcmToken phone");
+//         if (!withdraw) {
+//             return res.status(404).json({ success: false, message: "طلب السحب غير موجود" });
+//         }
+
+//         // 🔹 تحديث الحالة
+//         withdraw.status = status;
+//         if (status === "rejected") {
+//             if (!reason) {
+//                 return res.status(400).json({ success: false, message: "السبب مطلوب عند الرفض" });
+//             }
+//             withdraw.reason = reason;
+//         }
+//         await withdraw.save();
+
+//         // 🔹 خصم الرصيد عند اكتمال السحب
+//         if (status === "completed") {
+//             let remainingAmount = withdraw.amount;
+
+//             // جلب كل المدفوعات المتاحة للسحب
+//             const payments = await Payment.find({
+//                 userId: withdraw.driverId._id,
+//                 status: "succeeded",
+//                 $or: [
+//                     { deliveryRemaining: { $gt: 0 } },
+//                     { paidDeliveryAmount: { $gt: 0 } }
+//                 ]
+//             }).sort({ createdAt: 1 }); // الأقدم أولًا
+
+//             for (let p of payments) {
+//                 if (remainingAmount <= 0) break;
+
+//                 // خصم من deliveryRemaining
+//                 const deductFromDelivery = Math.min(p.deliveryRemaining, remainingAmount);
+//                 p.deliveryRemaining -= deductFromDelivery;
+//                 remainingAmount -= deductFromDelivery;
+
+//                 // خصم من paidDeliveryAmount لو باقي مبلغ
+//                 if (remainingAmount > 0) {
+//                     const deductFromCommission = Math.min(p.paidDeliveryAmount, remainingAmount);
+//                     p.paidDeliveryAmount -= deductFromCommission;
+//                     remainingAmount -= deductFromCommission;
+//                 }
+
+//                 await p.save();
+//             }
+
+//             if (remainingAmount > 0) {
+//                 // الرصيد غير كافي، ممكن ترفض أو تسجل فرق
+//                 console.warn("رصيد الدليفري غير كافي لإتمام السحب بالكامل");
+//             }
+//         }
+
+//         // 🔹 إرسال إشعار FCM
+//         const driver = withdraw.driverId;
+//         if (driver?.fcmToken) {
+//             let notificationBody = "";
+
+//             if (status === "approved") {
+//                 notificationBody = `تمت الموافقة على طلب السحب الخاص بك وسيتم إرسال الأموال في أقرب وقت.`;
+//             } else if (status === "rejected") {
+//                 notificationBody = `تم رفض طلب السحب الخاص بك. السبب: ${reason}`;
+//             } else if (status === "completed") {
+//                 notificationBody = `تم إرسال الأموال إلى حسابك. يرجى التحقق من محفظتك.`;
+//             }
+
+//             try {
+//                 await admin.messaging().send({
+//                     notification: {
+//                         title: "تحديث حالة طلب السحب",
+//                         body: notificationBody
+//                     },
+//                     data: {
+//                         withdrawId: withdraw._id.toString(),
+//                         status,
+//                         type: "WITHDRAW_STATUS"
+//                     },
+//                     token: driver.fcmToken
+//                 });
+//             } catch (err) {
+//                 console.error("❌ فشل إرسال الإشعار:", err.message);
+//             }
+//         }
+
+//         return res.status(200).json({
+//             success: true,
+//             message: `تم تحديث حالة طلب السحب إلى ${status}`,
+//             withdraw
+//         });
+
+//     } catch (error) {
+//         console.error("❌ Review Withdraw Request Error:", error);
+//         return res.status(500).json({
+//             success: false,
+//             message: "حدث خطأ أثناء تحديث حالة طلب السحب",
+//             error: error.message
+//         });
+//     }
+// };
+
+
+
 export const reviewWithdrawRequest = async (req, res) => {
     try {
         const { withdrawId, status, reason } = req.body;
-
-        // if (!req.user?._id || req.user.accountType !== "Owner") {
-        //     return res.status(401).json({
-        //         success: false,
-        //         message: "غير مصرح - يجب أن تكون مالك النظام"
-        //     });
-        // }
 
         if (!withdrawId || !status) {
             return res.status(400).json({
@@ -2410,7 +2518,6 @@ export const reviewWithdrawRequest = async (req, res) => {
         if (status === "completed") {
             let remainingAmount = withdraw.amount;
 
-            // جلب كل المدفوعات المتاحة للسحب
             const payments = await Payment.find({
                 userId: withdraw.driverId._id,
                 status: "succeeded",
@@ -2418,17 +2525,15 @@ export const reviewWithdrawRequest = async (req, res) => {
                     { deliveryRemaining: { $gt: 0 } },
                     { paidDeliveryAmount: { $gt: 0 } }
                 ]
-            }).sort({ createdAt: 1 }); // الأقدم أولًا
+            }).sort({ createdAt: 1 });
 
             for (let p of payments) {
                 if (remainingAmount <= 0) break;
 
-                // خصم من deliveryRemaining
                 const deductFromDelivery = Math.min(p.deliveryRemaining, remainingAmount);
                 p.deliveryRemaining -= deductFromDelivery;
                 remainingAmount -= deductFromDelivery;
 
-                // خصم من paidDeliveryAmount لو باقي مبلغ
                 if (remainingAmount > 0) {
                     const deductFromCommission = Math.min(p.paidDeliveryAmount, remainingAmount);
                     p.paidDeliveryAmount -= deductFromCommission;
@@ -2439,16 +2544,14 @@ export const reviewWithdrawRequest = async (req, res) => {
             }
 
             if (remainingAmount > 0) {
-                // الرصيد غير كافي، ممكن ترفض أو تسجل فرق
                 console.warn("رصيد الدليفري غير كافي لإتمام السحب بالكامل");
             }
         }
 
-        // 🔹 إرسال إشعار FCM
+        // 🔹 إرسال إشعار FCM وتخزينه في قاعدة البيانات
         const driver = withdraw.driverId;
-        if (driver?.fcmToken) {
+        if (driver) {
             let notificationBody = "";
-
             if (status === "approved") {
                 notificationBody = `تمت الموافقة على طلب السحب الخاص بك وسيتم إرسال الأموال في أقرب وقت.`;
             } else if (status === "rejected") {
@@ -2457,21 +2560,33 @@ export const reviewWithdrawRequest = async (req, res) => {
                 notificationBody = `تم إرسال الأموال إلى حسابك. يرجى التحقق من محفظتك.`;
             }
 
-            try {
-                await admin.messaging().send({
-                    notification: {
-                        title: "تحديث حالة طلب السحب",
-                        body: notificationBody
-                    },
-                    data: {
-                        withdrawId: withdraw._id.toString(),
-                        status,
-                        type: "WITHDRAW_STATUS"
-                    },
-                    token: driver.fcmToken
-                });
-            } catch (err) {
-                console.error("❌ فشل إرسال الإشعار:", err.message);
+            // تخزين الإشعار في قاعدة البيانات
+            await NotificationModel.create({
+                user: driver._id,
+                title: "تحديث حالة طلب السحب",
+                body: notificationBody,
+                type: "WITHDRAW_STATUS",
+                isRead: false
+            });
+
+            // إرسال FCM إذا كان متاح
+            if (driver.fcmToken) {
+                try {
+                    await admin.messaging().send({
+                        notification: {
+                            title: "تحديث حالة طلب السحب",
+                            body: notificationBody
+                        },
+                        data: {
+                            withdrawId: withdraw._id.toString(),
+                            status,
+                            type: "WITHDRAW_STATUS"
+                        },
+                        token: driver.fcmToken
+                    });
+                } catch (err) {
+                    console.error("❌ فشل إرسال الإشعار عبر FCM:", err.message);
+                }
             }
         }
 
@@ -2489,7 +2604,16 @@ export const reviewWithdrawRequest = async (req, res) => {
             error: error.message
         });
     }
-};
+}
+
+
+
+
+
+
+
+
+
 
 export const reviewDeliveryAccount = asyncHandelr(async (req, res) => {
     const { userId, status, reason } = req.body;
