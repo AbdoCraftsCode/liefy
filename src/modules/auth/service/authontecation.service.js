@@ -3382,6 +3382,31 @@ export const getMyActiveOrdersForDelivery = asyncHandelr(async (req, res, next) 
 
 
 
+export const getAllComplaintsadmin = async (req, res) => {
+    try {
+        const complaints = await Complaint.find()
+            .populate({
+                path: "userId",
+                select: "fullName phone"  // رجع فقط الاسم ورقم الهاتف من جدول User
+            })
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            count: complaints.length,
+            data: complaints
+        });
+
+    } catch (err) {
+        console.error("❌ Get Complaints Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب الشكاوى"
+        });
+    }
+};
+
+
 
 
 
