@@ -1528,6 +1528,59 @@ export const getMyPendingWithdrawRequests = async (req, res) => {
 };
 
 
+export const getMyPendingWithdrawRequestsAdmin = async (req, res) => {
+    try {
+        const { driverId, status } = req.query;
+
+        if (!driverId) {
+            return res.status(400).json({
+                success: false,
+                message: "يجب إرسال driverId"
+            });
+        }
+
+        let filter = { driverId };
+
+        // لو المستخدم بعت status نطبق الفلتر
+        if (status) {
+            if (!["pending", "approved", "rejected", "completed"].includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "حالة غير صالحة. استخدم: pending, approved, rejected, completed"
+                });
+            }
+            filter.status = status;
+        }
+
+        // جلب الطلبات بناءً على الفلتر
+        const withdraws = await Withdraw.find(filter).sort({ createdAt: -1 });
+
+        // إضافة reason فقط للحالات المرفوضة
+        const response = withdraws.map(w => {
+            const data = w.toObject();
+            if (w.status === "rejected") {
+                data.reason = w.reason || "";
+            }
+            return data;
+        });
+
+        return res.status(200).json({
+            success: true,
+            count: withdraws.length,
+            withdraws: response
+        });
+
+    } catch (error) {
+        console.error("❌ Get My Withdraws Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء جلب طلبات السحب",
+            error: error.message
+        });
+    }
+};
+
+
 
 
 export const createWithdrawRequest = async (req, res) => {
