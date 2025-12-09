@@ -3408,7 +3408,89 @@ export const getAllComplaintsadmin = async (req, res) => {
 
 
 
+export const blockUser = async (req, res) => {
+    try {
+        const { userId } = req.body;
 
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "يجب إرسال userId"
+            });
+        }
+
+        const user = await Usermodel.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "المستخدم غير موجود"
+            });
+        }
+
+        user.isBlock = true;
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "تم حظر المستخدم بنجاح",
+            data: {
+                userId: user._id,
+                isBlock: user.isBlock
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ Block User Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء حظر المستخدم",
+            error: error.message
+        });
+    }
+};
+
+export const unblockUser = async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: "يجب إرسال userId"
+            });
+        }
+
+        const user = await Usermodel.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: "المستخدم غير موجود"
+            });
+        }
+
+        user.isBlock = false;
+        await user.save();
+
+        return res.status(200).json({
+            success: true,
+            message: "تم فك الحظر عن المستخدم بنجاح",
+            data: {
+                userId: user._id,
+                isBlock: user.isBlock
+            }
+        });
+
+    } catch (error) {
+        console.error("❌ Unblock User Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء فك الحظر",
+            error: error.message
+        });
+    }
+};
 
 
 

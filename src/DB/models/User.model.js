@@ -91,7 +91,8 @@ const userSchema = new Schema({
         enum: ['DriverProfile', 'DoctorProfile', 'HostProfile', 'DeliveryProfile'],
     },
     fcmToken: { type: String, default: null },
-    isOnline: { type: Boolean , default: false },
+    isOnline: { type: Boolean, default: false },
+    isBlock: { type: Boolean, default: false },
     userId: String,
     // OTPs
     emailOTP: String,

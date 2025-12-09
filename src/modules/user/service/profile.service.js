@@ -664,7 +664,7 @@ export const getAllNormalUsers = async (req, res) => {
     try {
         const users = await Usermodel.find(
             { accountType: "User" },      // الشرط
-            { phone: 1, fullName: 1 }     // الفيلدز اللي هنعرضها
+            { phone: 1, fullName: 1, isBlock:1}     // الفيلدز اللي هنعرضها
         );
 
         res.status(200).json({
@@ -687,6 +687,7 @@ export const getAllProviders = async (req, res) => {
             {
                 phone: 1,
                 fullName: 1,
+                isBlock: 1,
                 status: 1,
                 profie1: 1,
                 profie2: 1,
