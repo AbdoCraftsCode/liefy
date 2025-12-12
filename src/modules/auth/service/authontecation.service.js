@@ -2076,132 +2076,144 @@ export const getMyFavoritePlaces = async (req, res) => {
 
 
 
-export const updateOrderStatusdlivery = async (req, res) => {
-    try {
-        const { action } = req.body;
-        const { orderId } = req.params;
 
-        const user = await Usermodel.findById(req.user._id);
-        if (!user || user.accountType !== "ServiceProvider") {
-            return res.status(403).json({
-                success: false,
-                message: "غير مسموح — هذا الإجراء متاح لمقدمي الخدمة فقط"
-            });
-        }
 
-        const order = await dliveryModel.findById(orderId);
-        if (!order) {
-            return res.status(404).json({
-                success: false,
-                message: "الطلب غير موجود"
-            });
-        }
 
-        if (order.status === "completed") {
-            return res.status(400).json({
-                success: false,
-                message: "لا يمكن تغيير حالة طلب مكتمل"
-            });
-        }
 
-        let notificationTitle = "";
-        let notificationBody = "";
-        let notificationType = "";
 
-        if (action === "accept") {
-            order.status = "pending";
-            order.subStatus = "assigned";
-            order.assignedTo = req.user._id;
-            notificationTitle = "✅ تم قبول عرضك!";
-            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} بقبول طلبك وهو في انتظار الدفع.`;
-            notificationType = "ORDER_ACCEPTED";
-        } else if (action === "reject") {
-            order.status = "cancelled";
-            order.subStatus = "by_driver";
-            order.assignedTo = req.user._id;
-            notificationTitle = "❌ تم رفض الطلب";
-            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} برفض الطلب.`;
-            notificationType = "ORDER_REJECTED";
-        } else if (action === "going_to_pickup") {
-            order.status = "active";
-            order.subStatus = "going_to_pickup";
-            notificationTitle = "🚗 جاري التوجه لموقع الاستلام";
-            notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق إلى موقع استلام طلبك.`;
-            notificationType = "GOING_TO_PICKUP";
-        } else if (action === "picked") {
-            order.status = "active";
-            order.subStatus = "picked";
-            notificationTitle = "📦 تم استلام الطلب";
-            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} باستلام الطلب من موقع الاستلام.`;
-            notificationType = "ORDER_PICKED";
-        } else if (action === "going_to_destination") {
-            order.status = "active";
-            order.subStatus = "going_to_destination";
-            notificationTitle = "🛵 في الطريق لموقع التسليم";
-            notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق لتسليم طلبك.`;
-            notificationType = "GOING_TO_DESTINATION";
-        } else if (action === "delivered") {
-            order.status = "completed";
-            order.subStatus = "delivered";
-            notificationTitle = "🎉 تم تسليم الطلب بنجاح";
-            notificationBody = `تم تسليم طلبك بواسطة ${user.fullName || ""}. شكرًا لاستخدامك خدمتنا!`;
-            notificationType = "ORDER_DELIVERED";
-        } else {
-            return res.status(400).json({
-                success: false,
-                message: "قيمة action غير صالحة"
-            });
-        }
 
-        await order.save();
 
-        // ----------------------------- حفظ الإشعار في قاعدة البيانات -----------------------------
-        await NotificationModel.create({
-            user: order.createdBy,   // 🔥 صاحب الطلب
-            order: order._id,
-            title: notificationTitle,
-            body: notificationBody,
-            type: notificationType
-        });
 
-        // ----------------------------- إرسال إشعار FCM إذا موجود -----------------------------
-        const client = await Usermodel.findById(order.createdBy);
-        if (client && client.fcmToken) {
-            try {
-                await admin.messaging().send({
-                    notification: {
-                        title: notificationTitle,
-                        body: notificationBody,
-                    },
-                    data: {
-                        orderId: order._id.toString(),
-                        providerId: req.user._id.toString(),
-                        type: notificationType
-                    },
-                    token: client.fcmToken.trim()
-                });
-                console.log("📨 تم إرسال إشعار تغيير حالة الطلب للعميل");
-            } catch (err) {
-                console.error("❌ فشل إرسال إشعار للعميل:", err.message);
-            }
-        } else {
-            console.log("⚠️ العميل ليس لديه FCM Token");
-        }
 
-        return res.status(200).json({
-            success: true,
-            message: "تم تحديث حالة الطلب بنجاح",
-            data: order
-        });
 
-    } catch (err) {
-        console.error("❌ Order Status Update Error:", err);
-        res.status(500).json({
-            success: false,
-            message: "حدث خطأ أثناء تحديث حالة الطلب"
-        });
-    }
-};
+// export const updateOrderStatusdlivery = async (req, res) => {
+//     try {
+//         const { action } = req.body;
+//         const { orderId } = req.params;
+
+//         const user = await Usermodel.findById(req.user._id);
+//         if (!user || user.accountType !== "ServiceProvider") {
+//             return res.status(403).json({
+//                 success: false,
+//                 message: "غير مسموح — هذا الإجراء متاح لمقدمي الخدمة فقط"
+//             });
+//         }
+
+//         const order = await dliveryModel.findById(orderId);
+//         if (!order) {
+//             return res.status(404).json({
+//                 success: false,
+//                 message: "الطلب غير موجود"
+//             });
+//         }
+
+//         if (order.status === "completed") {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "لا يمكن تغيير حالة طلب مكتمل"
+//             });
+//         }
+
+//         let notificationTitle = "";
+//         let notificationBody = "";
+//         let notificationType = "";
+
+//         if (action === "accept") {
+//             order.status = "pending";
+//             order.subStatus = "assigned";
+//             order.assignedTo = req.user._id;
+//             notificationTitle = "✅ تم قبول عرضك!";
+//             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} بقبول طلبك وهو في انتظار الدفع.`;
+//             notificationType = "ORDER_ACCEPTED";
+//         } else if (action === "reject") {
+//             order.status = "cancelled";
+//             order.subStatus = "by_driver";
+//             order.assignedTo = req.user._id;
+//             notificationTitle = "❌ تم رفض الطلب";
+//             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} برفض الطلب.`;
+//             notificationType = "ORDER_REJECTED";
+//         } else if (action === "going_to_pickup") {
+//             order.status = "active";
+//             order.subStatus = "going_to_pickup";
+//             notificationTitle = "🚗 جاري التوجه لموقع الاستلام";
+//             notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق إلى موقع استلام طلبك.`;
+//             notificationType = "GOING_TO_PICKUP";
+//         } else if (action === "picked") {
+//             order.status = "active";
+//             order.subStatus = "picked";
+//             notificationTitle = "📦 تم استلام الطلب";
+//             notificationBody = `قام مقدم الخدمة ${user.fullName || ""} باستلام الطلب من موقع الاستلام.`;
+//             notificationType = "ORDER_PICKED";
+//         } else if (action === "going_to_destination") {
+//             order.status = "active";
+//             order.subStatus = "going_to_destination";
+//             notificationTitle = "🛵 في الطريق لموقع التسليم";
+//             notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق لتسليم طلبك.`;
+//             notificationType = "GOING_TO_DESTINATION";
+//         } else if (action === "delivered") {
+//             order.status = "completed";
+//             order.subStatus = "delivered";
+//             notificationTitle = "🎉 تم تسليم الطلب بنجاح";
+//             notificationBody = `تم تسليم طلبك بواسطة ${user.fullName || ""}. شكرًا لاستخدامك خدمتنا!`;
+//             notificationType = "ORDER_DELIVERED";
+//         } else {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "قيمة action غير صالحة"
+//             });
+//         }
+
+//         await order.save();
+
+//         // ----------------------------- حفظ الإشعار في قاعدة البيانات -----------------------------
+//         await NotificationModel.create({
+//             user: order.createdBy,   // 🔥 صاحب الطلب
+//             order: order._id,
+//             title: notificationTitle,
+//             body: notificationBody,
+//             type: notificationType
+//         });
+
+//         // ----------------------------- إرسال إشعار FCM إذا موجود -----------------------------
+//         const client = await Usermodel.findById(order.createdBy);
+//         if (client && client.fcmToken) {
+//             try {
+//                 await admin.messaging().send({
+//                     notification: {
+//                         title: notificationTitle,
+//                         body: notificationBody,
+//                     },
+//                     data: {
+//                         orderId: order._id.toString(),
+//                         providerId: req.user._id.toString(),
+//                         type: notificationType
+//                     },
+//                     token: client.fcmToken.trim()
+//                 });
+//                 console.log("📨 تم إرسال إشعار تغيير حالة الطلب للعميل");
+//             } catch (err) {
+//                 console.error("❌ فشل إرسال إشعار للعميل:", err.message);
+//             }
+//         } else {
+//             console.log("⚠️ العميل ليس لديه FCM Token");
+//         }
+
+//         return res.status(200).json({
+//             success: true,
+//             message: "تم تحديث حالة الطلب بنجاح",
+//             data: order
+//         });
+
+//     } catch (err) {
+//         console.error("❌ Order Status Update Error:", err);
+//         res.status(500).json({
+//             success: false,
+//             message: "حدث خطأ أثناء تحديث حالة الطلب"
+//         });
+//     }
+// };
+
+
 
 
 
@@ -2239,6 +2251,181 @@ export const getUserNotifications = async (req, res) => {
     }
 };
 
+export const updateOrderStatusdlivery = async (req, res) => {
+    try {
+        const { action } = req.body;
+        const { orderId } = req.params;
+
+        const user = await Usermodel.findById(req.user._id);
+        if (!user || user.accountType !== "ServiceProvider") {
+            return res.status(403).json({
+                success: false,
+                message: "غير مسموح — هذا الإجراء متاح لمقدمي الخدمة فقط"
+            });
+        }
+
+        const order = await dliveryModel.findById(orderId);
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "الطلب غير موجود"
+            });
+        }
+
+        if (order.status === "completed") {
+            return res.status(400).json({
+                success: false,
+                message: "لا يمكن تغيير حالة طلب مكتمل"
+            });
+        }
+
+        let notificationTitle = "";
+        let notificationBody = "";
+        let notificationType = "";
+
+        // ------------------------ النصوص بالألماني ------------------------
+        let notificationTitleGR = "";
+        let notificationBodyGR = "";
+
+        if (action === "accept") {
+            order.status = "pending";
+            order.subStatus = "assigned";
+            order.assignedTo = req.user._id;
+
+            // عربي
+            notificationTitle = "✅ تم قبول عرضك!";
+            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} بقبول طلبك وهو في انتظار الدفع.`;
+
+            // ألماني
+            notificationTitleGR = "✅ Ihr Auftrag wurde angenommen!";
+            notificationBodyGR = `${user.fullName || ""} hat Ihre Anfrage angenommen und wartet auf die Zahlung.`;
+
+            notificationType = "ORDER_ACCEPTED";
+
+        } else if (action === "reject") {
+            order.status = "cancelled";
+            order.subStatus = "by_driver";
+            order.assignedTo = req.user._id;
+
+            notificationTitle = "❌ تم رفض الطلب";
+            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} برفض الطلب.`;
+
+            notificationTitleGR = "❌ Auftrag abgelehnt";
+            notificationBodyGR = `${user.fullName || ""} hat den Auftrag abgelehnt.`;
+
+            notificationType = "ORDER_REJECTED";
+
+        } else if (action === "going_to_pickup") {
+            order.status = "active";
+            order.subStatus = "going_to_pickup";
+
+            notificationTitle = "🚗 جاري التوجه لموقع الاستلام";
+            notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق إلى موقع استلام طلبك.`;
+
+            notificationTitleGR = "🚗 Auf dem Weg zum Abholort";
+            notificationBodyGR = `${user.fullName || ""} ist auf dem Weg zum Abholort Ihrer Bestellung.`;
+
+            notificationType = "GOING_TO_PICKUP";
+
+        } else if (action === "picked") {
+            order.status = "active";
+            order.subStatus = "picked";
+
+            notificationTitle = "📦 تم استلام الطلب";
+            notificationBody = `قام مقدم الخدمة ${user.fullName || ""} باستلام الطلب من موقع الاستلام.`;
+
+            notificationTitleGR = "📦 Bestellung abgeholt";
+            notificationBodyGR = `${user.fullName || ""} hat Ihre Bestellung vom Abholort abgeholt.`;
+
+            notificationType = "ORDER_PICKED";
+
+        } else if (action === "going_to_destination") {
+            order.status = "active";
+            order.subStatus = "going_to_destination";
+
+            notificationTitle = "🛵 في الطريق لموقع التسليم";
+            notificationBody = `مقدم الخدمة ${user.fullName || ""} في الطريق لتسليم طلبك.`;
+
+            notificationTitleGR = "🛵 Auf dem Weg zum Lieferort";
+            notificationBodyGR = `${user.fullName || ""} ist auf dem Weg, Ihre Bestellung zu liefern.`;
+
+            notificationType = "GOING_TO_DESTINATION";
+
+        } else if (action === "delivered") {
+            order.status = "completed";
+            order.subStatus = "delivered";
+
+            notificationTitle = "🎉 تم تسليم الطلب بنجاح";
+            notificationBody = `تم تسليم طلبك بواسطة ${user.fullName || ""}. شكرًا لاستخدامك خدمتنا!`;
+
+            notificationTitleGR = "🎉 Bestellung erfolgreich geliefert";
+            notificationBodyGR = `Ihre Bestellung wurde von ${user.fullName || ""} erfolgreich geliefert.`;
+
+            notificationType = "ORDER_DELIVERED";
+
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: "قيمة action غير صالحة"
+            });
+        }
+
+        await order.save();
+
+        // ----------------------------- جلب لغة العميل -----------------------------
+        const client = await Usermodel.findById(order.createdBy);
+        const clientLang = client?.lan || "ar"; // default ar
+
+        // ----------------------------- اختيار اللغة المناسبة للإرسال -----------------------------
+        const titleToSend = clientLang === "gr" ? notificationTitleGR : notificationTitle;
+        const bodyToSend = clientLang === "gr" ? notificationBodyGR : notificationBody;
+
+        // ----------------------------- حفظ الإشعار بلغتين في قاعدة البيانات -----------------------------
+        await NotificationModel.create({
+            user: order.createdBy,
+            order: order._id,
+            title: JSON.stringify({ ar: notificationTitle, gr: notificationTitleGR }),
+            body: JSON.stringify({ ar: notificationBody, gr: notificationBodyGR }),
+            type: notificationType
+        });
+
+        // ----------------------------- إرسال إشعار FCM -----------------------------
+        if (client && client.fcmToken) {
+            try {
+                await admin.messaging().send({
+                    notification: {
+                        title: titleToSend,
+                        body: bodyToSend,
+                    },
+                    data: {
+                        orderId: order._id.toString(),
+                        providerId: req.user._id.toString(),
+                        type: notificationType
+                    },
+                    token: client.fcmToken.trim()
+                });
+                console.log("📨 تم إرسال إشعار تغيير حالة الطلب للعميل");
+            } catch (err) {
+                console.error("❌ فشل إرسال إشعار للعميل:", err.message);
+            }
+        } else {
+            console.log("⚠️ العميل ليس لديه FCM Token");
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: "تم تحديث حالة الطلب بنجاح",
+            data: order
+        });
+
+    } catch (err) {
+        console.error("❌ Order Status Update Error:", err);
+        res.status(500).json({
+            success: false,
+            message: "حدث خطأ أثناء تحديث حالة الطلب"
+        });
+    }
+};
 
 
 // PUT /notifications/mark-read/:userId
@@ -2541,6 +2728,139 @@ export const sendNotificationById = async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+// export const reviewWithdrawRequest = async (req, res) => {
+//     try {
+//         const { withdrawId, status, reason } = req.body;
+
+//         if (!withdrawId || !status) {
+//             return res.status(400).json({
+//                 success: false,
+//                 message: "withdrawId و status مطلوبين"
+//             });
+//         }
+
+//         const withdraw = await Withdraw.findById(withdrawId).populate("driverId", "fullName fcmToken phone");
+//         if (!withdraw) {
+//             return res.status(404).json({ success: false, message: "طلب السحب غير موجود" });
+//         }
+
+//         // 🔹 تحديث الحالة
+//         withdraw.status = status;
+//         if (status === "rejected") {
+//             if (!reason) {
+//                 return res.status(400).json({ success: false, message: "السبب مطلوب عند الرفض" });
+//             }
+//             withdraw.reason = reason;
+//         }
+//         await withdraw.save();
+
+//         // 🔹 خصم الرصيد عند اكتمال السحب
+//         if (status === "completed") {
+//             let remainingAmount = withdraw.amount;
+
+//             const payments = await Payment.find({
+//                 userId: withdraw.driverId._id,
+//                 status: "succeeded",
+//                 $or: [
+//                     { deliveryRemaining: { $gt: 0 } },
+//                     { paidDeliveryAmount: { $gt: 0 } }
+//                 ]
+//             }).sort({ createdAt: 1 });
+
+//             for (let p of payments) {
+//                 if (remainingAmount <= 0) break;
+
+//                 const deductFromDelivery = Math.min(p.deliveryRemaining, remainingAmount);
+//                 p.deliveryRemaining -= deductFromDelivery;
+//                 remainingAmount -= deductFromDelivery;
+
+//                 if (remainingAmount > 0) {
+//                     const deductFromCommission = Math.min(p.paidDeliveryAmount, remainingAmount);
+//                     p.paidDeliveryAmount -= deductFromCommission;
+//                     remainingAmount -= deductFromCommission;
+//                 }
+
+//                 await p.save();
+//             }
+
+//             if (remainingAmount > 0) {
+//                 console.warn("رصيد الدليفري غير كافي لإتمام السحب بالكامل");
+//             }
+//         }
+
+//         // 🔹 إرسال إشعار FCM وتخزينه في قاعدة البيانات
+//         const driver = withdraw.driverId;
+//         if (driver) {
+//             let notificationBody = "";
+//             if (status === "approved") {
+//                 notificationBody = `تمت الموافقة على طلب السحب الخاص بك وسيتم إرسال الأموال في أقرب وقت.`;
+//             } else if (status === "rejected") {
+//                 notificationBody = `تم رفض طلب السحب الخاص بك. السبب: ${reason}`;
+//             } else if (status === "completed") {
+//                 notificationBody = `تم إرسال الأموال إلى حسابك. يرجى التحقق من محفظتك.`;
+//             }
+
+//             // تخزين الإشعار في قاعدة البيانات
+//             await NotificationModel.create({
+//                 user: driver._id,
+//                 title: "تحديث حالة طلب السحب",
+//                 body: notificationBody,
+//                 type: "WITHDRAW_STATUS",
+//                 isRead: false
+//             });
+
+//             // إرسال FCM إذا كان متاح
+//             if (driver.fcmToken) {
+//                 try {
+//                     await admin.messaging().send({
+//                         notification: {
+//                             title: "تحديث حالة طلب السحب",
+//                             body: notificationBody
+//                         },
+//                         data: {
+//                             withdrawId: withdraw._id.toString(),
+//                             status,
+//                             type: "WITHDRAW_STATUS"
+//                         },
+//                         token: driver.fcmToken
+//                     });
+//                 } catch (err) {
+//                     console.error("❌ فشل إرسال الإشعار عبر FCM:", err.message);
+//                 }
+//             }
+//         }
+
+//         return res.status(200).json({
+//             success: true,
+//             message: `تم تحديث حالة طلب السحب إلى ${status}`,
+//             withdraw
+//         });
+
+//     } catch (error) {
+//         console.error("❌ Review Withdraw Request Error:", error);
+//         return res.status(500).json({
+//             success: false,
+//             message: "حدث خطأ أثناء تحديث حالة طلب السحب",
+//             error: error.message
+//         });
+//     }
+// }
+
+
+
+
+
 export const reviewWithdrawRequest = async (req, res) => {
     try {
         const { withdrawId, status, reason } = req.body;
@@ -2552,7 +2872,7 @@ export const reviewWithdrawRequest = async (req, res) => {
             });
         }
 
-        const withdraw = await Withdraw.findById(withdrawId).populate("driverId", "fullName fcmToken phone");
+        const withdraw = await Withdraw.findById(withdrawId).populate("driverId", "fullName fcmToken phone lan");
         if (!withdraw) {
             return res.status(404).json({ success: false, message: "طلب السحب غير موجود" });
         }
@@ -2604,31 +2924,58 @@ export const reviewWithdrawRequest = async (req, res) => {
         // 🔹 إرسال إشعار FCM وتخزينه في قاعدة البيانات
         const driver = withdraw.driverId;
         if (driver) {
-            let notificationBody = "";
+
+            // -------------------------------------------------------------
+            //              🔥 النصوص بالعربي والألماني 🔥
+            // -------------------------------------------------------------
+            let bodyAR = "";
+            let bodyGR = "";
+
             if (status === "approved") {
-                notificationBody = `تمت الموافقة على طلب السحب الخاص بك وسيتم إرسال الأموال في أقرب وقت.`;
+                bodyAR = `تمت الموافقة على طلب السحب الخاص بك وسيتم إرسال الأموال في أقرب وقت.`;
+                bodyGR = `Ihre Auszahlungsanfrage wurde genehmigt und wird in Kürze ausgezahlt.`;
             } else if (status === "rejected") {
-                notificationBody = `تم رفض طلب السحب الخاص بك. السبب: ${reason}`;
+                bodyAR = `تم رفض طلب السحب الخاص بك. السبب: ${reason}`;
+                bodyGR = `Ihre Auszahlungsanfrage wurde abgelehnt. Grund: ${reason}`;
             } else if (status === "completed") {
-                notificationBody = `تم إرسال الأموال إلى حسابك. يرجى التحقق من محفظتك.`;
+                bodyAR = `تم إرسال الأموال إلى حسابك. يرجى التحقق من محفظتك.`;
+                bodyGR = `Das Geld wurde an Ihr Konto gesendet. Bitte überprüfen Sie Ihre Wallet.`;
             }
 
-            // تخزين الإشعار في قاعدة البيانات
+            // لغة السائق
+            const lang = driver.lan || "ar";
+
+            // الإشعار الذي سيتم إرساله حسب اللغة
+            const bodyToSend = lang === "gr" ? bodyGR : bodyAR;
+
+            // -------------------------------------------------------------
+            //              🔥 تخزين الإشعار بلغتين داخل الـ DB 🔥
+            // -------------------------------------------------------------
             await NotificationModel.create({
                 user: driver._id,
-                title: "تحديث حالة طلب السحب",
-                body: notificationBody,
+                title: JSON.stringify({
+                    ar: "تحديث حالة طلب السحب",
+                    gr: "Aktualisierung des Auszahlungsstatus"
+                }),
+                body: JSON.stringify({
+                    ar: bodyAR,
+                    gr: bodyGR
+                }),
                 type: "WITHDRAW_STATUS",
                 isRead: false
             });
 
-            // إرسال FCM إذا كان متاح
+            // -------------------------------------------------------------
+            //              🔥 إرسال الإشعار عبر Firebase حسب اللغة 🔥
+            // -------------------------------------------------------------
             if (driver.fcmToken) {
                 try {
                     await admin.messaging().send({
                         notification: {
-                            title: "تحديث حالة طلب السحب",
-                            body: notificationBody
+                            title: lang === "gr"
+                                ? "Aktualisierung des Auszahlungsstatus"
+                                : "تحديث حالة طلب السحب",
+                            body: bodyToSend
                         },
                         data: {
                             withdrawId: withdraw._id.toString(),
@@ -2658,11 +3005,6 @@ export const reviewWithdrawRequest = async (req, res) => {
         });
     }
 }
-
-
-
-
-
 
 
 
