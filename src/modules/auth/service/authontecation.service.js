@@ -3325,15 +3325,13 @@ export const getMyPendingOrders = asyncHandelr(async (req, res, next) => {
 
 
 
-
 export const getMycompletedOrders = asyncHandelr(async (req, res, next) => {
     const userId = req.user.id;
 
     const user = await Usermodel.findById(userId);
     if (!user) return next(new Error("❌ المستخدم غير موجود", { cause: 404 }));
 
-    // ⭐ إضافة populate لجلب اسم ورقم مقدم الخدمة في المفاوضات
-    const myPendingOrders = await dliveryModel.find({
+    const myCompletedOrders = await dliveryModel.find({
         createdBy: userId,
         status: "completed"
     })
@@ -3343,39 +3341,78 @@ export const getMycompletedOrders = asyncHandelr(async (req, res, next) => {
         })
         .sort({ createdAt: -1 });
 
-    if (!myPendingOrders.length) {
+    if (!myCompletedOrders.length) {
         return res.status(200).json({
             success: true,
-            message: "ℹ️ لا توجد طلبات في الانتظار",
+            message: "ℹ️ لا توجد طلبات مكتملة",
             data: []
         });
     }
 
-    // ⭐ تجهيز الشكل النهائي للبيانات مع دمج اسم ورقم مقدم العرض
-    const formattedOrders = myPendingOrders.map(order => {
-        const newNegotiations = order.negotiations.map(n => ({
-            _id: n._id,
-            newDeliveryPrice: n.newDeliveryPrice,
+    const invoices = myCompletedOrders.map(order => {
+
+        const negotiations = order.negotiations.map(n => ({
+            offerId: n._id,
+            deliveryPrice: n.newDeliveryPrice,
             message: n.message,
             createdAt: n.createdAt,
-            offeredBy: n.offeredBy?._id,
-            offeredByName: n.offeredBy?.fullName || null,
-            offeredByPhone: n.offeredBy?.phone || null
+            offeredBy: {
+                id: n.offeredBy?._id || null,
+                name: n.offeredBy?.fullName || null,
+                phone: n.offeredBy?.phone || null
+            }
         }));
 
         return {
-            ...order.toObject(),
-            negotiations: newNegotiations
+            invoice: {
+                invoiceNumber: `INV-${order.orderNumber}`,
+                invoiceDate: order.createdAt
+            },
+
+            customer: {
+                id: user._id,
+                name: order.customerName,
+                phone: order.phone
+            },
+
+            order: {
+                orderId: order._id,
+                orderNumber: order.orderNumber,
+                status: order.status,
+                subStatus: order.subStatus
+            },
+
+            route: {
+                from: {
+                    address: order.source.address
+                },
+                to: {
+                    address: order.destination.address
+                }
+            },
+
+            details: {
+                description: order.orderDetails || "—"
+            },
+
+            pricing: {
+                orderPrice: order.orderPrice || 0,
+                deliveryFee: order.deliveryPrice,
+                totalAmount: order.totalPrice || order.deliveryPrice
+            },
+
+            negotiations
         };
     });
 
     return res.status(200).json({
         success: true,
-        message: "✅ تم جلب الطلبات في الانتظار بنجاح",
-        count: formattedOrders.length,
-        data: formattedOrders
+        message: "✅ تم جلب الفواتير بنجاح",
+        count: invoices.length,
+        data: invoices
     });
 });
+
 
 
 
